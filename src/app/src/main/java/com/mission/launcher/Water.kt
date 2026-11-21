@@ -16,6 +16,7 @@ import org.json.JSONObject
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.Duration
 
 /**
  * Hydration engine. A reminder is an ongoing notification that is re-posted
@@ -27,8 +28,21 @@ object Water {
 
     fun goal() = Store.i("water_goal", 3000).coerceIn(500, 8000)
     fun enabled() = Store.b("water_on", true)
-    fun startHour() = Store.i("water_start", 7).coerceIn(0, 22)
-    fun endHour() = Store.i("water_end", 22).coerceIn(startHour() + 1, 23)
+    fun startTime(): LocalTime = try {
+        LocalTime.parse(Store.s("water_start_time", "%02d:00".format(Store.i("water_start", 7).coerceIn(0, 22))))
+    } catch (e: Exception) {
+        LocalTime.of(Store.i("water_start", 7).coerceIn(0, 22), 0)
+    }
+    fun endTime(): LocalTime {
+        val selected = try {
+            LocalTime.parse(Store.s("water_end_time", "%02d:00".format(Store.i("water_end", 22).coerceIn(1, 23))))
+        } catch (e: Exception) {
+            LocalTime.of(Store.i("water_end", 22).coerceIn(1, 23), 0)
+        }
+        return selected.takeIf { it.isAfter(startTime()) } ?: LocalTime.MAX
+    }
+    fun startHour() = startTime().hour
+    fun endHour() = endTime().hour
     fun interval() = Store.i("water_interval", 90).coerceIn(20, 240)
     fun nagMin() = Store.i("water_nag", 8).coerceIn(2, 30)
     fun insist() = Store.b("water_insist", true)
@@ -38,28 +52,34 @@ object Water {
     // ---- logging ----
     fun add(ml: Int): String { val id = Store.newId(); Store.add("water", obj("id" to id, "t" to System.currentTimeMillis(), "ml" to ml)); return id }
     fun remove(id: String) = Store.remove("water", id)
-    fun undoLast(): Boolean { val last = Store.rows("water").maxByOrNull { it.optLong("t") } ?: return false; return remove(last.optString("id")) }
-    fun todayEntries(): List<JSONObject> { val d = LocalDate.now(); return Store.rows("water").filter { Repo.dayOf(it.optLong("t")) == d }.sortedByDescending { it.optLong("t") } }
-    fun history(days: Int): List<Pair<LocalDate, Int>> { val t = LocalDate.now(); return (days - 1 downTo 0).map { val d = t.minusDays(it.toLong()); d to Repo.waterOn(d) } }
-    fun streak(): Int { var d = LocalDate.now(); if (Repo.waterOn(d) < goal()) d = d.minusDays(1); var s = 0; while (Repo.waterOn(d) >= goal() && s < 1000) { s++; d = d.minusDays(1) }; return s }
+    fun todayEntries(): List<JSONObject> { val d = LocalDate.now(Repo.zone()); return Store.rows("water").filter { Repo.dayOf(it.optLong("t")) == d }.sortedByDescending { it.optLong("t") } }
+    fun history(days: Int): List<Pair<LocalDate, Int>> { val t = LocalDate.now(Repo.zone()); return (days - 1 downTo 0).map { val d = t.minusDays(it.toLong()); d to Repo.waterOn(d) } }
+    fun streak(): Int { var d = LocalDate.now(Repo.zone()); if (Repo.waterOn(d) < goal()) d = d.minusDays(1); var s = 0; while (Repo.waterOn(d) >= goal() && s < 1000) { s++; d = d.minusDays(1) }; return s }
 
     /** How many ml the user should already have had by now to be on pace. */
     fun behind(): Int {
-        val n = LocalTime.now(); val h = n.hour + n.minute / 60f
-        val f = ((h - startHour()) / (endHour() - startHour())).coerceIn(0f, 1f)
+        val n = LocalTime.now(Repo.zone())
+        val duration = Duration.between(startTime(), endTime()).toMinutes().coerceAtLeast(1)
+        val elapsed = Duration.between(startTime(), n).toMinutes().toFloat()
+        val f = (elapsed / duration).coerceIn(0f, 1f)
         return (goal() * f - Repo.waterToday()).toInt().coerceAtLeast(0)
     }
 
     // ---- scheduling ----
     fun arm(c: Context) {
         if (!enabled()) { Sched.cancelWater(c); return }
-        val now = LocalDateTime.now()
+        val now = LocalDateTime.now(Repo.zone())
+        val start = startTime()
+        val end = endTime()
+        val local = now.toLocalTime()
         if (pending()) { Sched.waterNag(c, System.currentTimeMillis() + nagMin() * 60000L); return }
         val have = Repo.waterToday()
-        var next = now.plusMinutes((if (behind() > goal() / 6) interval() * 2 / 3 else interval()).toLong())
-        if (have >= goal() || next.hour >= endHour() || next.hour < startHour()) {
-            next = (if (now.hour < startHour()) now else now.plusDays(1)).withHour(startHour()).withMinute(0).withSecond(0).withNano(0)
+        var next = when {
+            have >= goal() || !local.isBefore(end) -> now.toLocalDate().plusDays(1).atTime(start)
+            local.isBefore(start) -> now.toLocalDate().atTime(start)
+            else -> now.plusMinutes((if (behind() > goal() / 6) interval() * 2 / 3 else interval()).toLong())
         }
+        if (!next.toLocalTime().isBefore(end)) next = next.toLocalDate().plusDays(1).atTime(start)
         val at = next.atZone(Repo.zone()).toInstant().toEpochMilli()
         Store.put("w_next", at); Sched.water(c, at)
     }
@@ -67,12 +87,13 @@ object Water {
     fun remind(c: Context, nag: Boolean) {
         Boot.ensure(c)
         if (!enabled()) return
-        val have = Repo.waterToday(); val hr = LocalTime.now().hour
-        if (have >= goal() || hr < startHour() || hr >= endHour()) { clear(c); arm(c); return }
+        val have = Repo.waterToday(); val local = LocalTime.now(Repo.zone())
+        if (have >= goal() || local.isBefore(startTime()) || !local.isBefore(endTime())) { clear(c); arm(c); return }
         val level = if (nag) Store.i("w_level", 0) + 1 else 0
         Store.put("w_pending", true); Store.put("w_level", level)
         post(c, level)
-        if (level >= 2 && c.canOverlay() && (c.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive) card(c, level)
+        val interactive = try { (c.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive } catch (e: Exception) { Log.e("water-power", e); false }
+        if (c.canOverlay() && interactive) card(c, level)
         if (insist()) Sched.waterNag(c, System.currentTimeMillis() + nagMin() * 60000L) else { Store.put("w_pending", false); arm(c) }
     }
 
@@ -112,7 +133,7 @@ object Water {
     fun post(c: Context, level: Int) {
         val have = Repo.waterToday(); val g = goal(); val (title, body) = lines(level, have, g, behind())
         val open = PendingIntent.getActivity(c, 7, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val ri = RemoteInput.Builder("ml").setLabel("ml (type -200 to remove)").build()
+        val ri = RemoteInput.Builder("ml").setLabel("amount in ml").build()
         val custom = Notification.Action.Builder(Icon.createWithResource(c, smallIcon(c)), "Add / remove", act(c, 14, WaterReceiver.CUSTOM, 0, true)).addRemoteInput(ri).build()
         val c1 = cups().getOrElse(1) { 250 }; val c2 = cups().getOrElse(3) { 500 }
         val b = Notification.Builder(c, CH_WATER).setSmallIcon(smallIcon(c)).setContentTitle(title).setContentText(body)
@@ -124,7 +145,7 @@ object Water {
             .addAction(Notification.Action.Builder(Icon.createWithResource(c, smallIcon(c)), "+$c2 ml", act(c, 12, WaterReceiver.ADD, c2)).build())
             .addAction(custom)
         val n = b.build(); n.flags = n.flags or Notification.FLAG_NO_CLEAR or Notification.FLAG_ONGOING_EVENT
-        try { c.nm().notify(NID, n) } catch (e: SecurityException) { }
+        try { c.nm().notify(NID, n) } catch (e: SecurityException) { Log.e("water-notification", e) }
     }
 
     // ---- on-screen insistence card ----
@@ -139,10 +160,10 @@ object Water {
                 val row = c.hbox(); val a = cups().getOrElse(1) { 250 }; val b2 = cups().getOrElse(3) { 500 }
                 row.addView(c.pill("+$a ml", "drop", true, T.teal) { logFromAction(c, a) }, lpm(-2, -2, 0, 0, 8, 0))
                 row.addView(c.pill("+$b2 ml", null, false) { logFromAction(c, b2) }, lpm(-2, -2, 0, 0, 8, 0))
-                row.addView(c.pill("Later", null, false) { snooze(c) }, lpm(-2, -2, 0, 0, 8, 0)); row.addView(c.pill("Undo", "undo", false) { undoLast(); clear(c); arm(c) })
+                row.addView(c.pill("Later", null, false) { snooze(c) }, lpm(-2, -2, 0, 0, 8, 0))
                 box.addView(row, lp(-2, -2, 10))
                 val lp = Overlay.params(T.dp(300)).apply { gravity = Gravity.TOP or Gravity.END; x = T.dp(16); y = T.dp(48); }
-                Overlay.show(c, "water", box, lp, 90000)
+                Overlay.show(c, "water", box, lp)
             } catch (e: Exception) { Log.e("water-card", e) }
         }
     }

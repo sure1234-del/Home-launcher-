@@ -20,7 +20,16 @@ class Attempt(val title: String, val mode: String, val at: Long, val score: Doub
 class Sub(val name: String, val q: Int)
 class Micro(val name: String, val subs: List<Sub>) { val q: Int get() = subs.sumOf { it.q } }
 class Subj(val name: String, val micros: List<Micro>) { val q: Int get() = micros.sumOf { it.q } }
-class ZData(val mocks: List<Mock>, val attempts: List<Attempt>, val syl: List<Subj>, val subjResp: Map<String, IntArray>, val microResp: Map<String, IntArray>, val updated: Long, val live: Boolean)
+class ZData(
+    val mocks: List<Mock>,
+    val attempts: List<Attempt>,
+    val syl: List<Subj>,
+    val subjResp: Map<String, IntArray>,
+    val microResp: Map<String, IntArray>,
+    val pyqYears: Map<Int, Map<String, Int>>,
+    val updated: Long,
+    val live: Boolean
+)
 
 // ======================= Zite =======================
 object Zite {
@@ -30,14 +39,14 @@ object Zite {
     private val T_MOCK = "tmdHZ5f4Dmi"; private val T_ATT = "twCUDF8M3Uk"; private val T_RESP = "tdro4b981tN"; private val T_PYQ = "tmQwv2XY5gm"
     private val F = mapOf(
         "Title" to "fw6dYGDAcBs", "Section" to "fd6D42USKdM", "Kind" to "f1f3544Ckrr", "Status" to "fozWMT78fvN", "Scheduled Date" to "f76AzV9FQAs", "Question Count" to "fxnBBmjL4x7",
-        "Mode" to "fi2m24hvs4p", "Score" to "ftvW3abUZEH", "Correct" to "fpcRNkKVKpX", "Wrong" to "fsW6KfXcxP5", "Skipped" to "fgQv9h2KU9s", "Accuracy" to "fdY5LJVY6No",
+        "Mode" to "fi2m24hvs4p", "Score" to "ftvW3abUZEH", "Correct" to "fpcRNkKVKpX", "Wrong" to "fsW6KfXcxP5", "Skipped" to "fgQv9h2KU9s", "Accuracy" to "fdY5LJVY6No", "Year" to "f7dMVCcvBnN",
         "Time Taken Sec" to "fbMzT3KnBFN", "Time Limit Sec" to "fqD5Gbvke1o", "Submitted At" to "f312NXkXTsG", "Result" to "fnwXK1JDaj6", "Subject" to "fmus9ptLZPh", "Micro Theme" to "frzmZ7LZMf2", "Sub Topic" to "fg4gC83iHYe")
 
     @Volatile private var memo: ZData? = null
     @Volatile var syncing = false
     @Volatile var lastError: String = ""
 
-    fun hasKey() = Store.s("zite_key").isNotBlank()
+    fun hasKey() = SecureStore.get("zite").isNotBlank()
     fun db() = Store.s("zite_db", DEFAULT_DB).ifBlank { DEFAULT_DB }
     fun data(c: Context): ZData { memo?.let { return it }; val d = load(c); memo = d; return d }
     fun invalidate() { memo = null }
@@ -57,7 +66,15 @@ object Zite {
         val srJ = if (live && cache.has("subjResp")) cache.optJSONObject("subjResp") else try { JSONObject(asset(c, "responses.json")) } catch (e: Exception) { JSONObject() }
         srJ?.keys()?.forEach { k -> val a = srJ.optJSONArray(k); if (a != null) sr[k] = intArrayOf(a.optInt(0), a.optInt(1), a.optInt(2)) }
         cache.optJSONObject("microResp")?.let { m -> m.keys().forEach { k -> val a = m.optJSONArray(k); if (a != null) mr[k] = intArrayOf(a.optInt(0), a.optInt(1), a.optInt(2)) } }
-        return ZData(mocks, atts, syl, sr, mr, cache.optLong("updated", 0L), live)
+        val pyqYears = LinkedHashMap<Int, Map<String, Int>>()
+        cache.optJSONObject("pyq_years")?.let { years ->
+            years.keys().forEach { year ->
+                val subjects = LinkedHashMap<String, Int>()
+                years.optJSONObject(year)?.let { counts -> counts.keys().forEach { subject -> subjects[subject] = counts.optInt(subject) } }
+                year.toIntOrNull()?.let { pyqYears[it] = subjects }
+            }
+        }
+        return ZData(mocks, atts, syl, sr, mr, pyqYears, cache.optLong("updated", 0L), live)
     }
     private fun parseTree(a: JSONArray): List<Subj> = a.objs().map { s -> Subj(s.optString("s"), (s.optJSONArray("m") ?: JSONArray()).objs().map { m -> Micro(m.optString("n"), (m.optJSONArray("t") ?: JSONArray()).objs().map { t -> Sub(t.optString("n"), t.optInt("q")) }) }) }
     private fun parseDate(s: String): LocalDate? = try { if (s.isBlank()) null else LocalDate.parse(s.take(10)) } catch (e: Exception) { null }
@@ -66,7 +83,7 @@ object Zite {
     private fun post(path: String, body: JSONObject): JSONObject {
         val c = URL("$BASE$path").openConnection() as HttpURLConnection
         c.requestMethod = "POST"; c.connectTimeout = 15000; c.readTimeout = 45000; c.doOutput = true
-        c.setRequestProperty("Authorization", "Bearer " + Store.s("zite_key").trim()); c.setRequestProperty("Content-Type", "application/json")
+        c.setRequestProperty("Authorization", "Bearer " + SecureStore.get("zite").trim()); c.setRequestProperty("Content-Type", "application/json")
         c.outputStream.use { it.write(body.toString().toByteArray()) }
         val code = c.responseCode
         val txt = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
@@ -101,7 +118,12 @@ object Zite {
     private fun fv(rec: JSONObject, name: String): String {
         val f = rec.optJSONObject("fields") ?: rec
         val id = F[name]
-        return when { f.has(name) -> unwrap(f.opt(name)); id != null && f.has(id) -> unwrap(f.opt(id)); else -> "" }
+        val alternateIds = if (name == "Subject") listOf("fpbZq46JPA3") else emptyList()
+        return when {
+            f.has(name) -> unwrap(f.opt(name))
+            id != null && f.has(id) -> unwrap(f.opt(id))
+            else -> alternateIds.firstNotNullOfOrNull { fieldId -> if (f.has(fieldId)) unwrap(f.opt(fieldId)) else null } ?: ""
+        }
     }
     private fun num(rec: JSONObject, name: String): Double = fv(rec, name).toDoubleOrNull() ?: 0.0
 
@@ -110,6 +132,7 @@ object Zite {
         if (!hasKey()) return "No Zite API key yet (Settings > Zite)"
         if (syncing) return "Sync already running"
         syncing = true; errs.clear()
+        val generation = Store.writeGeneration
         try {
             val cache = Store.obj("cache_zite")
             // mocks
@@ -128,23 +151,73 @@ object Zite {
                 if (idx >= 0 && s.isNotBlank()) { sr.getOrPut(s) { IntArray(3) }[idx]++; if (m.isNotBlank()) mr.getOrPut("$s|$m") { IntArray(3) }[idx]++ } }
             if (respRows != null) cache.put("subjResp", JSONObject().also { o -> sr.forEach { (k, v) -> o.put(k, JSONArray(v.toList())) } })
             if (respRows != null) cache.put("microResp", JSONObject().also { o -> mr.forEach { (k, v) -> o.put(k, JSONArray(v.toList())) } })
-            // syllabus tree from PYQ taxonomy (heavier, every 12 h or on demand)
-            if (full || System.currentTimeMillis() - cache.optLong("treeAt", 0) > 12 * 3600000L) {
+            val refreshTree = full || System.currentTimeMillis() - cache.optLong("treeAt", 0) > 12 * 3600000L
+            val pyqRows = if (refreshTree || !cache.has("pyq_years")) safeList(T_PYQ) else null
+            if (pyqRows != null) {
+                val yearCounts = LinkedHashMap<Int, LinkedHashMap<String, Int>>()
+                pyqRows.forEach { r ->
+                    val year = num(r, "Year").toInt()
+                    val subject = fv(r, "Subject").ifBlank { "Unclassified" }
+                    if (year in 1950..2100) {
+                        val counts = yearCounts.getOrPut(year) { LinkedHashMap() }
+                        counts[subject] = (counts[subject] ?: 0) + 1
+                    }
+                }
+                if (yearCounts.isNotEmpty()) {
+                    cache.put("pyq_years", JSONObject().also { years ->
+                        yearCounts.toSortedMap().forEach { (year, subjects) ->
+                            years.put(year.toString(), JSONObject().also { counts ->
+                                subjects.toSortedMap().forEach { (subject, count) -> counts.put(subject, count) }
+                            })
+                        }
+                    })
+                }
+            }
+            // Syllabus tree and year breakdown use the same PYQ records.
+            if (refreshTree && pyqRows != null) {
                 val tree = LinkedHashMap<String, LinkedHashMap<String, LinkedHashMap<String, Int>>>()
-                (safeList(T_PYQ) ?: emptyList()).forEach { r -> val s = fv(r, "Subject").ifBlank { "Unclassified" }; val m = fv(r, "Micro Theme").ifBlank { "General" }; val t = fv(r, "Sub Topic")
-                    val mm = tree.getOrPut(s) { LinkedHashMap() }.getOrPut(m) { LinkedHashMap() }; mm[t] = (mm[t] ?: 0) + 1 }
+                pyqRows.forEach { r ->
+                    val s = fv(r, "Subject").ifBlank { "Unclassified" }
+                    val m = fv(r, "Micro Theme").ifBlank { "General" }
+                    val t = fv(r, "Sub Topic")
+                    val mm = tree.getOrPut(s) { LinkedHashMap() }.getOrPut(m) { LinkedHashMap() }
+                    mm[t] = (mm[t] ?: 0) + 1
+                }
                 if (tree.isNotEmpty()) {
-                    val a = JSONArray(); tree.toSortedMap().forEach { (s, ms) -> a.put(obj("s" to s, "m" to JSONArray().also { ma -> ms.toSortedMap().forEach { (m, ts) -> ma.put(obj("n" to m, "t" to JSONArray().also { ta -> ts.toSortedMap().forEach { (t, q) -> ta.put(obj("n" to t, "q" to q)) } })) } })) }
-                    cache.put("syl", a); cache.put("treeAt", System.currentTimeMillis())
+                    val a = JSONArray()
+                    tree.toSortedMap().forEach { (s, ms) ->
+                        a.put(obj("s" to s, "m" to JSONArray().also { ma ->
+                            ms.toSortedMap().forEach { (m, ts) ->
+                                ma.put(obj("n" to m, "t" to JSONArray().also { ta ->
+                                    ts.toSortedMap().forEach { (t, q) -> ta.put(obj("n" to t, "q" to q)) }
+                                }))
+                            }
+                        }))
+                    }
+                    cache.put("syl", a)
+                    cache.put("treeAt", System.currentTimeMillis())
                 }
             }
             cache.put("updated", System.currentTimeMillis())
-            Store.saveObj("cache_zite", cache); invalidate()
-            if (errs.isEmpty()) { lastError = ""; Store.put("zite_last_err", ""); Store.put("zite_last_ok", System.currentTimeMillis()); Store.changed(); return "Synced ${mocks.length()} mocks, ${atts.length()} results" }
-            lastError = errs.joinToString("; "); Store.put("zite_last_err", lastError); Store.changed()
+            if (generation != Store.writeGeneration) return "Sync stopped because data was reset"
+            Store.saveObj("cache_zite", cache, generation); invalidate()
+            if (generation != Store.writeGeneration) return "Sync stopped because data was reset"
+            if (errs.isEmpty()) {
+                lastError = ""
+                if (!Store.putIfGeneration(generation, "zite_last_err", "") ||
+                    !Store.putIfGeneration(generation, "zite_last_ok", System.currentTimeMillis())
+                ) return "Sync stopped because data was reset"
+                Store.changed()
+                return "Synced ${mocks.length()} mocks, ${atts.length()} results"
+            }
+            lastError = errs.joinToString("; ")
+            if (!Store.putIfGeneration(generation, "zite_last_err", lastError)) return "Sync stopped because data was reset"
+            Store.changed()
             return "Partly synced. " + lastError
         } catch (e: Exception) {
-            lastError = e.message ?: e.toString(); Store.put("zite_last_err", lastError)
+            if (generation != Store.writeGeneration) return "Sync stopped because data was reset"
+            lastError = e.message ?: e.toString()
+            Store.putIfGeneration(generation, "zite_last_err", lastError)
             return "Sync failed: $lastError"
         } finally { syncing = false }
     }
@@ -156,12 +229,12 @@ object Zite {
 object Syl {
     enum class St { NEW, LEARNING, DONE }
     fun doneSet(): MutableSet<String> = Store.stringList("syl_done").toMutableSet()
-    fun toggle(key: String) { val s = doneSet(); if (!s.add(key)) s.remove(key); Store.setStringList("syl_done", s.toList()); Store.changed() }
+    fun toggle(key: String) { val s = doneSet(); if (!s.add(key)) s.remove(key); Store.setStringList("syl_done", s.toList()) }
     fun microState(z: ZData, subj: String, micro: String): St {
         if ("$subj|$micro" in doneSet()) return St.DONE
         val r = z.microResp["$subj|$micro"] ?: return St.NEW
         val att = r[0] + r[1]; if (att == 0) return St.NEW
-        return if (att >= 5 && r[0].toFloat() / att >= 0.7f) St.DONE else St.LEARNING
+        return St.LEARNING
     }
     fun subjectProgress(z: ZData, s: Subj): Float {
         if (s.micros.isEmpty()) return 0f
@@ -195,20 +268,20 @@ object Mains {
 // ======================= repository helpers =======================
 object Repo {
     private fun ld(s: String): LocalDate? = try { LocalDate.parse(s) } catch (e: Exception) { null }
-    fun zone(): ZoneId = ZoneId.systemDefault()
+    fun zone(): ZoneId = ZoneId.of("Asia/Kolkata")
     fun dayOf(ms: Long): LocalDate = Instant.ofEpochMilli(ms).atZone(zone()).toLocalDate()
     fun startOf(d: LocalDate): Long = d.atStartOfDay(zone()).toInstant().toEpochMilli()
 
     fun examDate(): LocalDate = ld(Store.s("exam_date", "2027-05-23")) ?: LocalDate.of(2027, 5, 23)
-    fun examSecondsLeft(): Long = ChronoUnit.SECONDS.between(LocalDateTime.now(), examDate().atTime(9, 30)).coerceAtLeast(0)
+    fun examSecondsLeft(): Long = ChronoUnit.SECONDS.between(LocalDateTime.now(zone()), examDate().atTime(9, 30)).coerceAtLeast(0)
 
     // tasks
     fun csv(): String { val sb = StringBuilder("date,start,end,minutes,subject,kind\n"); Store.rows("sessions").sortedBy { it.optLong("start") }.forEach { s -> sb.append(dayOf(s.optLong("start"))).append(',').append(java.time.Instant.ofEpochMilli(s.optLong("start")).atZone(zone()).toLocalTime().withNano(0)).append(',').append(java.time.Instant.ofEpochMilli(s.optLong("end")).atZone(zone()).toLocalTime().withNano(0)).append(',').append(s.optInt("mins")).append(',').append(s.optString("subject").replace(",", " ")).append(',').append(s.optString("kind")).append('\n') }; return sb.toString() }
-    fun carryOver(): Int { var n = 0; val tmr = LocalDate.now().plusDays(1).toString(); tasksFor(LocalDate.now()).filter { !it.optBoolean("done") }.forEach { t -> Store.update("tasks", t.optString("id")) { it.put("date", tmr) }; n++ }; return n }
+    fun carryOver(): Int { var n = 0; val today = LocalDate.now(zone()); val tmr = today.plusDays(1).toString(); tasksFor(today).filter { !it.optBoolean("done") }.forEach { t -> Store.update("tasks", t.optString("id")) { it.put("date", tmr) }; n++ }; return n }
     fun allTasks(): List<JSONObject> = Store.rows("tasks")
     fun tasksFor(d: LocalDate): List<JSONObject> = Store.rows("tasks").filter { ld(it.optString("date")) == d }
-    fun openTasks(): List<JSONObject> { val t = LocalDate.now(); return Store.rows("tasks").filter { val d = ld(it.optString("date")); !it.optBoolean("done") && d != null && !d.isAfter(t.plusDays(3)) }.sortedBy { it.optString("date") + it.optString("time") } }
-    fun addTask(text: String, date: LocalDate = LocalDate.now(), time: String = "") = Store.add("tasks", obj("date" to date.toString(), "text" to text, "done" to false, "time" to time))
+    fun openTasks(): List<JSONObject> { val t = LocalDate.now(zone()); return Store.rows("tasks").filter { val d = ld(it.optString("date")); !it.optBoolean("done") && d != null && !d.isAfter(t.plusDays(3)) }.sortedBy { it.optString("date") + it.optString("time") } }
+    fun addTask(text: String, date: LocalDate = LocalDate.now(zone()), time: String = "") = Store.add("tasks", obj("date" to date.toString(), "text" to text, "done" to false, "time" to time))
     fun toggleTask(id: String) = Store.update("tasks", id) { it.put("done", !it.optBoolean("done")) }
 
     // study sessions
@@ -220,17 +293,17 @@ object Repo {
     fun byDaySubject(days: List<LocalDate>): List<Map<String, Int>> {
         val rows = Store.rows("sessions"); return days.map { d -> rows.filter { dayOf(it.optLong("start")) == d }.groupBy { it.optString("subject").ifBlank { "General" } }.mapValues { e -> e.value.sumOf { it.optInt("mins") } } }
     }
-    fun streak(): Int { var d = LocalDate.now(); if (minutesOn(d) == 0) d = d.minusDays(1); var s = 0; while (minutesOn(d) > 0 && s < 1000) { s++; d = d.minusDays(1) }; return s }
-    fun weekMinutes(): Int { val t = LocalDate.now(); val mon = t.minusDays((t.dayOfWeek.value - 1).toLong()); return (0..6).sumOf { minutesOn(mon.plusDays(it.toLong())) } }
+    fun streak(): Int { var d = LocalDate.now(zone()); if (minutesOn(d) == 0) d = d.minusDays(1); var s = 0; while (minutesOn(d) > 0 && s < 1000) { s++; d = d.minusDays(1) }; return s }
+    fun weekMinutes(): Int { val t = LocalDate.now(zone()); val mon = t.minusDays((t.dayOfWeek.value - 1).toLong()); return (0..6).sumOf { minutesOn(mon.plusDays(it.toLong())) } }
 
     // revisions (spaced repetition 1,3,7,21,60 days)
     val OFF = intArrayOf(1, 3, 7, 21, 60)
-    fun revisionsDue(): List<JSONObject> = Store.rows("revisions").filter { val r = it.optInt("round"); r < OFF.size && ld(it.optString("last"))?.plusDays(OFF[r].toLong())?.isAfter(LocalDate.now()) == false }
-    fun addRevision(topic: String) = Store.add("revisions", obj("topic" to topic, "last" to LocalDate.now().toString(), "round" to 0))
-    fun reviseDone(id: String) { Store.update("revisions", id) { it.put("last", LocalDate.now().toString()); it.put("round", it.optInt("round") + 1) }; Store.add("revlog", obj("date" to LocalDate.now().toString())) }
+    fun revisionsDue(): List<JSONObject> = Store.rows("revisions").filter { val r = it.optInt("round"); r < OFF.size && ld(it.optString("last"))?.plusDays(OFF[r].toLong())?.isAfter(LocalDate.now(zone())) == false }
+    fun addRevision(topic: String) = Store.add("revisions", obj("topic" to topic, "last" to LocalDate.now(zone()).toString(), "round" to 0))
+    fun reviseDone(id: String) { Store.update("revisions", id) { it.put("last", LocalDate.now(zone()).toString()); it.put("round", it.optInt("round") + 1) }; Store.add("revlog", obj("date" to LocalDate.now(zone()).toString())) }
 
     // water
-    fun waterToday(): Int = waterOn(LocalDate.now())
+    fun waterToday(): Int = waterOn(LocalDate.now(zone()))
     fun waterOn(d: LocalDate): Int = Store.rows("water").filter { dayOf(it.optLong("t")) == d }.sumOf { it.optInt("ml") }.coerceAtLeast(0)
 
     // schedule
@@ -242,11 +315,11 @@ class Up(val date: LocalDate, val time: String, val title: String, val sub: Stri
 
 object Upcoming {
     fun items(c: Context, limit: Int = 8): List<Up> {
-        val today = LocalDate.now(); val out = ArrayList<Up>()
+        val today = LocalDate.now(Repo.zone()); val out = ArrayList<Up>()
         Zite.data(c).mocks.forEach { m -> val d = m.date ?: return@forEach; if (!d.isBefore(today)) out.add(Up(d, "", m.title, (if (m.ready) "Ready" else "Questions pending") + (if (m.q > 0) " - ${m.q} Qs" else ""), "target", if (m.ready) T.terra else T.text3)) }
         Store.rows("events").forEach { e -> val d = try { LocalDate.parse(e.optString("date")) } catch (x: Exception) { return@forEach }; if (!d.isBefore(today)) out.add(Up(d, e.optString("time"), e.optString("title"), e.optString("note"), "calendar", T.plum)) }
         Store.rows("tasks").forEach { t -> val d = try { LocalDate.parse(t.optString("date")) } catch (x: Exception) { return@forEach }; if (d.isAfter(today) && !t.optBoolean("done") && d.isBefore(today.plusDays(15))) out.add(Up(d, t.optString("time"), t.optString("text"), "Task", "checkc", T.sage)) }
         return out.sortedWith(compareBy({ it.date }, { it.time })).take(limit)
     }
-    fun label(d: LocalDate): String { val n = ChronoUnit.DAYS.between(LocalDate.now(), d); return when (n) { 0L -> "Today"; 1L -> "Tomorrow"; else -> d.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() } + " " + d.dayOfMonth + " " + d.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() } + " - in $n d" } }
+    fun label(d: LocalDate): String { val n = ChronoUnit.DAYS.between(LocalDate.now(Repo.zone()), d); return when (n) { 0L -> "Today"; 1L -> "Tomorrow"; else -> d.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() } + " " + d.dayOfMonth + " " + d.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() } + " - in $n d" } }
 }

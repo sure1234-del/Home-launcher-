@@ -25,7 +25,7 @@ object T {
         val mode = Store.s("theme", "auto")
         val sys = (c.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         dark = when (mode) { "dark" -> true; "light" -> false
-            "schedule" -> { val h = java.time.LocalTime.now().hour; val from = Store.i("dark_from", 19); val to = Store.i("dark_to", 6); if (from > to) (h >= from || h < to) else (h in from until to) }
+            "schedule" -> { val h = java.time.LocalTime.now(Repo.zone()).hour; val from = Store.i("dark_from", 19); val to = Store.i("dark_to", 6); if (from > to) (h >= from || h < to) else (h in from until to) }
             else -> sys }
         loadFonts(c)
     }

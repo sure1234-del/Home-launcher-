@@ -33,12 +33,54 @@ object HomeLayout {
     private const val KEY = "home_layout"
     fun defaults(): JSONArray = JSONArray()
         .put(page("Today", "header", "countdown", "upcoming", "plan", "water", "weekly", "important"))
-        .put(page("Progress", "nexttopic", "syl3d", "prelims", "mains", "mockstats", "zite"))
+        .put(page("Progress", "nexttopic", "syl3d", "prelims", "mockstats", "zite"))
         .put(page("Study", "timer", "history", "focus", "revision", "ai", "notes", "usage", "tools", "links"))
     private fun page(name: String, vararg ids: String) = JSONObject().put("name", name).put("cards", JSONArray(ids.toList()))
-    fun load(): JSONArray = try { val s = Store.s(KEY); if (s.isBlank()) defaults() else JSONArray(s).also { if (it.length() == 0) return defaults() } } catch (e: Exception) { defaults() }
+    fun load(): JSONArray = try {
+        val saved = Store.s(KEY)
+        if (saved.isBlank()) defaults() else JSONArray(saved).also { pages ->
+            if (pages.length() == 0) return defaults()
+            for (i in 0 until pages.length()) {
+                val page = pages.optJSONObject(i) ?: continue
+                setCards(page, cards(page).filterNot { it == "mains" })
+            }
+        }
+    } catch (e: Exception) { defaults() }
     fun save(a: JSONArray) { Store.put(KEY, a.toString()) }
-    fun reset() { Store.put(KEY, null) }
+    fun reset() {
+        val current = load()
+        val widgetsByPage = (0 until current.length()).associateWith { index ->
+            cards(current.getJSONObject(index)).filter { it.startsWith("w:") }
+        }
+        val reset = defaults()
+        widgetsByPage.forEach { (index, widgets) ->
+            if (widgets.isNotEmpty()) {
+                val destination = minOf(index, reset.length() - 1)
+                val page = reset.getJSONObject(destination)
+                setCards(page, cards(page) + widgets)
+            }
+        }
+        save(reset)
+    }
+    fun widgetIds(): List<Int> = load().let { pages ->
+        (0 until pages.length()).flatMap { cards(pages.getJSONObject(it)) }
+            .filter { it.startsWith("w:") }
+            .mapNotNull { it.removePrefix("w:").toIntOrNull() }
+    }
+    fun removeWidget(id: Int): Boolean {
+        val pages = load()
+        var removed = false
+        for (index in 0 until pages.length()) {
+            val page = pages.getJSONObject(index)
+            val cards = cards(page)
+            if (cards.remove("w:$id")) {
+                setCards(page, cards)
+                removed = true
+            }
+        }
+        if (removed) save(pages)
+        return removed
+    }
     fun cards(p: JSONObject): MutableList<String> { val a = p.optJSONArray("cards") ?: JSONArray(); return (0 until a.length()).map { a.optString(it) }.toMutableList() }
     fun setCards(p: JSONObject, l: List<String>) { p.put("cards", JSONArray(l)) }
 }
@@ -91,9 +133,9 @@ class MainActivity : Activity(), Host {
         Apps.load(this) { buildDock(); drawer?.refresh() }
         Sched.hourly(this); Water.arm(this)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
-        if (Store.b("timer_running")) try { TimerService.start(this) } catch (e: Exception) { }
+        if (TimerState.active()) TimerService.start(this)
         if (!Store.b("wp_applied") && Wallpaper.enabled()) Thread { if (Wallpaper.apply(this, true)) Store.put("wp_applied", true) }.start()
-        if (!Store.b("welcomed")) { Store.put("welcomed", true); ui.postDelayed({ Dlg.info(this, "Welcome to Mission 2027", "Swipe between Today, Progress and Study. Swipe up on the dock or tap the search icon for all apps. Tap the sliders icon to rearrange or add widgets.\n\nOpen Settings > Zite and paste your API key to sync live data every hour. Pins are managed only from Settings > Apps.") ; openSettings("setup") }, 700) }
+        if (!Store.b("welcomed")) { Store.put("welcomed", true); ui.postDelayed({ Dlg.info(this, "Welcome to Mission 2027", "Swipe between Today, Progress and Study. Swipe up on the dock or tap the search icon for all apps. Tap the sliders icon to rearrange or add widgets.\n\nSet your reset password first. Then open Settings > Zite to configure live sync.") ; openSettings("reset") }, 700) }
     }
 
     override fun onDestroy() { super.onDestroy(); Store.listeners.remove(listener); try { unregisterReceiver(pkgReceiver) } catch (e: Exception) { }; ui.removeCallbacks(refreshRun) }
@@ -170,7 +212,6 @@ class MainActivity : Activity(), Host {
             bar.addView(text(title, 12.5f, 2, T.text2), LinearLayout.LayoutParams(0, -2, 1f))
             bar.addView(iconBtn("up", T.text2, 34) { moveCard(page, idx, -1) }); bar.addView(iconBtn("down", T.text2, 34) { moveCard(page, idx, 1) })
             bar.addView(iconBtn("chev", T.text2, 34) { moveToPage(page, idx) })
-            bar.addView(iconBtn("trash", T.danger, 34) { removeCard(page, idx) })
             wrap.addView(bar, lpm(-1, -2, 0, 0, 0, 6)); v.alpha = 0.96f
         }
         wrap.addView(v, LinearLayout.LayoutParams(-1, -2)); col.addView(wrap, lpm(-1, -2, 0, 0, 0, 14))
@@ -215,7 +256,6 @@ class MainActivity : Activity(), Host {
     }
     private fun mutate(f: (JSONArray) -> Unit) { val a = HomeLayout.load(); f(a); HomeLayout.save(a); rebuild() }
     private fun moveCard(page: Int, idx: Int, d: Int) = mutate { a -> val p = a.getJSONObject(page); val l = HomeLayout.cards(p); val j = idx + d; if (j in l.indices) { val t = l[idx]; l[idx] = l[j]; l[j] = t; HomeLayout.setCards(p, l) } }
-    private fun removeCard(page: Int, idx: Int) = mutate { a -> val p = a.getJSONObject(page); val l = HomeLayout.cards(p); val id = l.removeAt(idx); HomeLayout.setCards(p, l); if (id.startsWith("w:")) try { widgetHost.deleteAppWidgetId(id.substring(2).toInt()) } catch (e: Exception) { } }
     private fun moveToPage(page: Int, idx: Int) {
         val a = HomeLayout.load(); val names = (0 until a.length()).filter { it != page }.map { it to a.getJSONObject(it).optString("name") }
         Dlg.choose(this, "Move to page", names.map { it.second }) { k -> mutate { arr -> val src = arr.getJSONObject(page); val l = HomeLayout.cards(src); val id = l.removeAt(idx); HomeLayout.setCards(src, l); val dst = arr.getJSONObject(names[k].first); val dl = HomeLayout.cards(dst); dl.add(id); HomeLayout.setCards(dst, dl) } }
@@ -227,14 +267,12 @@ class MainActivity : Activity(), Host {
         Dlg.choose(this, "Add to this page", items) { i -> if (i == avail.size) pickSystemWidget() else mutate { arr -> val p = arr.getJSONObject(pi); val l = HomeLayout.cards(p); l.add(avail[i].first); HomeLayout.setCards(p, l) } }
     }
     private fun pageMenu() {
-        Dlg.choose(this, "Page", listOf("Add new page", "Rename this page", "Delete this page", "Move page left", "Move page right", "Reset layout to default")) { i ->
+        Dlg.choose(this, "Page", listOf("Add new page", "Rename this page", "Move page left", "Move page right")) { i ->
             val pi = pager.index
             when (i) {
                 0 -> Dlg.input(this, "New page name", "e.g. Revision", "", false, false, "Add") { n -> mutate { a -> a.put(JSONObject().put("name", n.ifBlank { "Page ${a.length() + 1}" }).put("cards", JSONArray())) }; pager.goTo(HomeLayout.load().length() - 1) }
                 1 -> Dlg.input(this, "Rename page", "", HomeLayout.load().getJSONObject(pi).optString("name")) { n -> if (n.isNotBlank()) mutate { it.getJSONObject(pi).put("name", n) } }
-                2 -> if (HomeLayout.load().length() <= 1) toast("Keep at least one page") else Dlg.confirm(this, "Delete page?", "Its cards are removed from home (your data stays).", "Delete") { mutate { a -> val l = (0 until a.length()).map { a.getJSONObject(it) }.toMutableList(); l.removeAt(pi); HomeLayout.save(JSONArray(l)); a.let { } } ; rebuild(maxOf(0, pi - 1)) }
-                3, 4 -> { val d = if (i == 3) -1 else 1; val a = HomeLayout.load(); val j = pi + d; if (j in 0 until a.length()) { val l = (0 until a.length()).map { a.getJSONObject(it) }.toMutableList(); val t = l[pi]; l[pi] = l[j]; l[j] = t; HomeLayout.save(JSONArray(l)); rebuild(j) } }
-                5 -> Dlg.confirm(this, "Reset layout?", "Restores the 3 default pages. System widgets are removed.", "Reset") { HomeLayout.reset(); rebuild(0) }
+                2, 3 -> { val d = if (i == 2) -1 else 1; val a = HomeLayout.load(); val j = pi + d; if (j in 0 until a.length()) { val l = (0 until a.length()).map { a.getJSONObject(it) }.toMutableList(); val t = l[pi]; l[pi] = l[j]; l[j] = t; HomeLayout.save(JSONArray(l)); rebuild(j) } }
             }
         }
     }

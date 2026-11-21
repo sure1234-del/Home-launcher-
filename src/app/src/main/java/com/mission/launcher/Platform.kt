@@ -50,8 +50,8 @@ object Sched {
         catch (e: SecurityException) { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p) }
     }
     fun hourly(c: Context) {
-        val t = LocalDateTime.now().plusHours(1).withMinute(0).withSecond(10).withNano(0)
-        setAt(c, t.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(), pi(c, 11, TickReceiver::class.java, "tick"))
+        val t = LocalDateTime.now(Repo.zone()).withMinute(0).withSecond(0).withNano(0).plusHours(1).withSecond(10)
+        setAt(c, t.atZone(Repo.zone()).toInstant().toEpochMilli(), pi(c, 11, TickReceiver::class.java, "tick"))
     }
     fun water(c: Context, at: Long) = setAt(c, at, pi(c, 21, WaterReceiver::class.java, WaterReceiver.TICK))
     fun waterNag(c: Context, at: Long) = setAt(c, at, pi(c, 22, WaterReceiver::class.java, WaterReceiver.NAG))
@@ -100,14 +100,20 @@ class TickReceiver : BroadcastReceiver() {
                 Backup.auto(c)
                 Briefs.tick(c)
                 Water.arm(c)
-                try { c.cacheDir.listFiles()?.forEach { it.deleteRecursively() } } catch (e: Exception) { }
+                try {
+                    val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+                    c.cacheDir.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
+                } catch (e: Exception) { Log.e("cache-cleanup", e) }
             } catch (e: Exception) { Log.e("tick", e) } finally { Sched.hourly(c); pr.finish() }
         }.start()
     }
 }
 
 class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(c: Context, i: Intent) { Boot.ensure(c); Sched.hourly(c); Water.arm(c); if (Store.b("timer_running")) TimerService.start(c) }
+    override fun onReceive(c: Context, i: Intent) {
+        Boot.ensure(c); Sched.hourly(c); Water.arm(c)
+        if (TimerState.active()) TimerService.start(c)
+    }
 }
 
 class WaterReceiver : BroadcastReceiver() {
@@ -118,7 +124,11 @@ class WaterReceiver : BroadcastReceiver() {
             TICK -> Water.remind(c, false)
             NAG -> Water.remind(c, true)
             ADD -> Water.logFromAction(c, i.getIntExtra("ml", 250))
-            CUSTOM -> { val raw = android.app.RemoteInput.getResultsFromIntent(i)?.getCharSequence("ml")?.toString()?.trim() ?: ""; val t = raw.filter { it.isDigit() }.toIntOrNull(); if (t != null && t in 10..3000) { if (raw.startsWith("-")) { Water.add(-t); Water.clear(c); Water.arm(c); Store.changed() } else Water.logFromAction(c, t) } else Water.remind(c, true) }
+            CUSTOM -> {
+                val raw = android.app.RemoteInput.getResultsFromIntent(i)?.getCharSequence("ml")?.toString()?.trim().orEmpty()
+                val amount = raw.toIntOrNull()
+                if (amount != null && amount in 10..3000) Water.logFromAction(c, amount) else Water.remind(c, true)
+            }
             SNOOZE -> Water.snooze(c)
             SKIP -> Water.skip(c)
             DISMISSED -> Water.onDismissed(c)

@@ -41,13 +41,15 @@ object Guard {
         go()
     }
     private fun limitDialog(a: Activity, used: Int, lim: Int, go: () -> Unit) {
-        val b = Dlg.builder(a).setTitle("Daily limit reached").setMessage("You have used $used of $lim minutes today. ${ChronoUnit.DAYS.between(LocalDate.now(), Repo.examDate())} days to Prelims.").setNegativeButton("Stay focused", null)
+        val today = LocalDate.now(Repo.zone())
+        val b = Dlg.builder(a).setTitle("Daily limit reached").setMessage("You have used $used of $lim minutes today. ${ChronoUnit.DAYS.between(today, Repo.examDate())} days to Prelims.").setNegativeButton("Stay focused", null)
         if (!Pin.isSet()) b.setPositiveButton("Open anyway") { _, _ -> go() } else b.setPositiveButton("Enter PIN") { _, _ -> if (a is MainActivity) a.gate { go() } else go() }
         b.show()
     }
     private fun pause(a: Activity, go: () -> Unit) {
         val secs = Store.i("mindful_secs", 5).coerceIn(3, 20); val h = Handler(Looper.getMainLooper())
-        val d = Dlg.builder(a).setTitle("Take a breath").setMessage("Is this what you want to do right now?\n\n${ChronoUnit.DAYS.between(LocalDate.now(), Repo.examDate())} days to Prelims. Studied today: ${fmtMins(Repo.minutesOn(LocalDate.now()))}.")
+        val today = LocalDate.now(Repo.zone())
+        val d = Dlg.builder(a).setTitle("Take a breath").setMessage("Is this what you want to do right now?\n\n${ChronoUnit.DAYS.between(today, Repo.examDate())} days to Prelims. Studied today: ${fmtMins(Repo.minutesOn(today))}.")
             .setNegativeButton("Back to study", null).setPositiveButton("Open anyway ($secs)") { _, _ -> go() }.create()
         d.show(); val btn = d.getButton(android.app.AlertDialog.BUTTON_POSITIVE); btn.isEnabled = false
         var left = secs
@@ -66,20 +68,20 @@ object Briefs {
         } catch (e: Exception) { Log.e("brief", e) }
     }
     fun tick(c: Context) {
-        val h = LocalTime.now().hour; val today = LocalDate.now().toString(); val days = ChronoUnit.DAYS.between(LocalDate.now(), Repo.examDate())
+        val date = LocalDate.now(Repo.zone()); val h = LocalTime.now(Repo.zone()).hour; val today = date.toString(); val days = ChronoUnit.DAYS.between(date, Repo.examDate())
         if (Store.b("brief_m_on", true) && h == Store.i("brief_m_hour", 6) && Store.s("brief_m_day") != today) {
             Store.put("brief_m_day", today)
-            val tasks = Repo.tasksFor(LocalDate.now()); val rev = Repo.revisionsDue().size
+            val tasks = Repo.tasksFor(date); val rev = Repo.revisionsDue().size
             post(c, 6101, "Good morning - $days days to Prelims", (if (tasks.isEmpty()) "No tasks planned yet. Add 3 priorities." else "${tasks.size} tasks today: " + tasks.take(3).joinToString(", ") { it.optString("text") }) + (if (rev > 0) "\n$rev topics to revise." else "") + "\nWater goal ${Water.goal()} ml. Study streak ${Repo.streak()} days.")
         }
         if (Store.b("brief_e_on", true) && h == Store.i("brief_e_hour", 21) && Store.s("brief_e_day") != today) {
             Store.put("brief_e_day", today)
-            val goal = Store.i("study_goal_min", 360); val done = Repo.minutesOn(LocalDate.now()); val open = Repo.tasksFor(LocalDate.now()).count { !it.optBoolean("done") }
+            val goal = Store.i("study_goal_min", 360); val done = Repo.minutesOn(date); val open = Repo.tasksFor(date).count { !it.optBoolean("done") }
             post(c, 6102, if (done >= goal) "Goal reached - well done" else "Evening check-in", "Studied ${fmtMins(done)} of ${fmtMins(goal)}." + (if (open > 0) " $open tasks still open." else "") + (if (done < goal) " A 25-minute block still counts." else " Plan tomorrow in two minutes."))
         }
-        if (Store.b("brief_w_on", true) && LocalDate.now().dayOfWeek == java.time.DayOfWeek.SUNDAY && h == Store.i("brief_e_hour", 21) && Store.s("brief_w_day") != today) {
+        if (Store.b("brief_w_on", true) && date.dayOfWeek == java.time.DayOfWeek.SUNDAY && h == Store.i("brief_e_hour", 21) && Store.s("brief_w_day") != today) {
             Store.put("brief_w_day", today)
-            val days7 = (6 downTo 0).map { LocalDate.now().minusDays(it.toLong()) }; val mins = days7.map { Repo.minutesOn(it) }; val best = days7[mins.indexOf(mins.max())]
+            val days7 = (6 downTo 0).map { date.minusDays(it.toLong()) }; val mins = days7.map { Repo.minutesOn(it) }; val best = days7[mins.indexOf(mins.max())]
             post(c, 6103, "Your week: ${fmtMins(mins.sum())}", "Best day ${best.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }} (${fmtMins(mins.max())}). Average ${fmtMins(mins.sum() / 7)} a day. Water streak ${Water.streak()} days.")
         }
     }

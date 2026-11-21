@@ -80,9 +80,32 @@ object Apps {
 
 object Usage {
     fun granted(c: Context): Boolean = try { val ao = c.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager; ao.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), c.packageName) == AppOpsManager.MODE_ALLOWED } catch (e: Exception) { false }
+    fun foregroundPackage(c: Context): String? = try {
+        if (!granted(c)) return null
+        val now = System.currentTimeMillis()
+        val manager = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val events = manager.queryEvents((now - 30 * 60 * 1000L).coerceAtLeast(0L), now)
+        val event = android.app.usage.UsageEvents.Event()
+        var latestAt = 0L
+        var latestPackage: String? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if ((event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED ||
+                    event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) &&
+                event.timeStamp >= latestAt
+            ) {
+                latestAt = event.timeStamp
+                latestPackage = event.packageName
+            }
+        }
+        latestPackage
+    } catch (e: Exception) {
+        Log.e("usage-foreground", e)
+        null
+    }
     fun today(c: Context): Map<String, Long> = try {
         val um = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val start = Repo.startOf(LocalDate.now()); um.queryAndAggregateUsageStats(start, System.currentTimeMillis()).mapValues { it.value.totalTimeInForeground }.filter { it.value > 30000 && it.key != c.packageName }
+        val start = Repo.startOf(LocalDate.now(Repo.zone())); um.queryAndAggregateUsageStats(start, System.currentTimeMillis()).mapValues { it.value.totalTimeInForeground }.filter { it.value > 30000 && it.key != c.packageName }
     } catch (e: Exception) { emptyMap() }
     fun openSettings(c: Context) { try { c.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { } }
 }

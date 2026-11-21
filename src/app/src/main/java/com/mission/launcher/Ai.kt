@@ -34,8 +34,8 @@ object Ai {
         Provider("claude", "Claude (Anthropic)", "anthropic", "https://api.anthropic.com/v1", "claude-sonnet-5-5"),
         Provider("custom", "Other (OpenAI-compatible)", "openai", "https://openrouter.ai/api/v1", "openrouter/auto", true))
     fun provider(id: String = Store.s("ai_provider", "gemini")): Provider = providers.firstOrNull { it.id == id } ?: providers[0]
-    fun key(id: String): String { val o = try { JSONObject(Store.s("ai_keys", "{}")) } catch (e: Exception) { JSONObject() }; val k = o.optString(id); return if (k.isNotBlank()) k else if (id == "gemini") Store.s("gemini_key") else "" }
-    fun setKey(id: String, k: String) { val o = try { JSONObject(Store.s("ai_keys", "{}")) } catch (e: Exception) { JSONObject() }; o.put(id, k.trim()); Store.put("ai_keys", o.toString()) }
+    fun key(id: String): String = SecureStore.get("ai:$id")
+    fun setKey(id: String, k: String) = SecureStore.put("ai:$id", k.trim())
     fun model(p: Provider = provider()) = Store.s("ai_model_${p.id}", p.model).ifBlank { p.model }
     fun base(p: Provider = provider()) = Store.s("ai_base_${p.id}", p.base).ifBlank { p.base }.trimEnd('/')
     fun ready(p: Provider = provider()) = key(p.id).isNotBlank()
@@ -54,11 +54,11 @@ object Ai {
 
     // ---------- context ----------
     fun statusText(c: Context): String {
-        val z = Zite.data(c); val today = LocalDate.now()
+        val z = Zite.data(c); val today = LocalDate.now(Repo.zone())
         val tasks = Repo.tasksFor(today).joinToString("; ") { (if (it.optBoolean("done")) "[x] " else "[ ] ") + it.optString("text") }
         val mocks = Upcoming.items(c, 3).joinToString("; ") { it.title + " on " + it.date }
         return "Today ${today}. Days to Prelims ${java.time.temporal.ChronoUnit.DAYS.between(today, Repo.examDate())}. Studied today ${Repo.minutesOn(today)} min, week ${Repo.weekMinutes()} min, streak ${Repo.streak()} d. Water ${Repo.waterToday()}/${Water.goal()} ml. " +
-            "Prelims syllabus ${(Syl.overall(z) * 100).toInt()}% done, Mains ${(Mains.overall() * 100).toInt()}%. Tasks: ${tasks.ifBlank { "none" }}. Next: ${mocks.ifBlank { "none" }}. Revisions due: ${Repo.revisionsDue().size}."
+            "Prelims syllabus ${(Syl.overall(z) * 100).toInt()}% done. Tasks: ${tasks.ifBlank { "none" }}. Next: ${mocks.ifBlank { "none" }}. Revisions due: ${Repo.revisionsDue().size}."
     }
     private fun system(c: Context) = "You are Mission AI, a concise study mentor inside the user's launcher. The user is preparing for UPSC Civil Services 2027 (Hindi medium, Philosophy optional). " +
         "Reply in the language the user writes in (Hindi, Hinglish or English), short and point-wise. Never invent facts or statistics; say when unsure. Live status: " + statusText(c) + (Store.s("ai_summary").let { if (it.isBlank()) "" else "\nEarlier conversation summary: $it" })
@@ -124,7 +124,7 @@ object Ai {
 
     private fun runTool(c: Context, name: String, a: JSONObject): String = try {
         when (name) {
-            "add_task" -> { Repo.addTask(a.optString("text"), try { LocalDate.parse(a.optString("date")) } catch (e: Exception) { LocalDate.now() }, a.optString("time")); "Task added." }
+            "add_task" -> { Repo.addTask(a.optString("text"), try { LocalDate.parse(a.optString("date")) } catch (e: Exception) { LocalDate.now(Repo.zone()) }, a.optString("time")); "Task added." }
             "add_note" -> { Store.add("notes", obj("date" to Store.today(), "text" to a.optString("text"), "t" to System.currentTimeMillis())); "Note saved." }
             "add_water" -> { val ml = a.optInt("ml"); if (ml in 10..3000) { Water.logFromAction(c, ml); "Logged $ml ml." } else "Invalid amount." }
             "add_revision" -> { Repo.addRevision(a.optString("topic")); "Added to revision." }

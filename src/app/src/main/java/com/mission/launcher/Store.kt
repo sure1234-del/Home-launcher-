@@ -26,6 +26,8 @@ object Store {
     private val main = Handler(Looper.getMainLooper())
     val listeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile var ready = false
+    @Volatile var writeGeneration = 0L
+        private set
     lateinit var app: Context
 
     fun init(c: Context) {
@@ -36,7 +38,10 @@ object Store {
             cfgJ = readObj("cfg")
             ready = true
         }
-        try { Migrate.run(app) } catch (e: Exception) { Log.e("migrate", e) }
+        try {
+            Migrate.run(app)
+            SecureStore.migrateLegacy()
+        } catch (e: Exception) { Log.e("migrate", e) }
     }
 
     // ---------- file helpers ----------
@@ -50,12 +55,15 @@ object Store {
     private fun readObj(n: String): JSONObject = try { JSONObject(readText(n) ?: "{}") } catch (e: Exception) { JSONObject() }
     private fun readArr(n: String): JSONArray = try { JSONArray(readText(n) ?: "[]") } catch (e: Exception) { JSONArray() }
 
-    private fun writeAtomic(n: String, text: String) {
+    private fun writeAtomic(n: String, text: String, expectedGeneration: Long? = null) {
         try {
-            val f = fileOf(n); val t = File(dir, "$n.json.tmp")
-            t.writeText(text)
-            if (f.exists()) f.copyTo(File(dir, "$n.json.bak"), true)
-            if (!t.renameTo(f)) { f.writeText(text); t.delete() }
+            synchronized(this) {
+                if (expectedGeneration != null && expectedGeneration != writeGeneration) return
+                val f = fileOf(n); val t = File(dir, "$n.json.tmp")
+                t.writeText(text)
+                if (f.exists()) f.copyTo(File(dir, "$n.json.bak"), true)
+                if (!t.renameTo(f)) { f.writeText(text); t.delete() }
+            }
         } catch (e: Exception) { Log.e("store-write", e) }
     }
 
@@ -65,14 +73,29 @@ object Store {
     }
     private val flusher = Runnable { flushNow() }
     fun flushNow() {
-        val names: List<String>
-        synchronized(this) { names = dirty.toList(); dirty.clear() }
-        for (n in names) {
-            val text = synchronized(this) { if (n == "cfg") cfgJ.toString() else mem[n]?.toString() } ?: continue
-            writeAtomic(n, text)
+        val writes: List<Pair<String, String>>
+        val generation: Long
+        synchronized(this) {
+            generation = writeGeneration
+            writes = dirty.mapNotNull { n ->
+                val text = if (n == "cfg") cfgJ.toString() else mem[n]?.toString()
+                text?.let { n to it }
+            }
+            dirty.clear()
         }
+        writes.forEach { (name, text) -> writeAtomic(name, text, generation) }
     }
-    fun eraseAll() { synchronized(this) { mem.clear(); dirty.clear(); cfgJ = JSONObject(); dir.listFiles()?.forEach { it.delete() } }; changed() }
+    fun eraseAll() {
+        synchronized(this) {
+            writeGeneration++
+            io.removeCallbacks(flusher)
+            val files = dir.listFiles() ?: throw IllegalStateException("Could not list stored data files")
+            val failures = files.filter { it.exists() && !it.delete() }
+            check(failures.isEmpty()) { "Could not delete ${failures.size} stored data files" }
+            mem.clear(); dirty.clear(); cfgJ = JSONObject()
+        }
+        changed()
+    }
     fun changed() { main.post { listeners.forEach { try { it() } catch (e: Exception) { } } } }
 
     // ---------- settings (key/value) ----------
@@ -83,6 +106,15 @@ object Store {
     fun b(k: String, d: Boolean = false): Boolean = synchronized(this) { cfgJ.optBoolean(k, d) }
     fun has(k: String) = synchronized(this) { cfgJ.has(k) }
     fun put(k: String, v: Any?) { synchronized(this) { if (v == null) cfgJ.remove(k) else cfgJ.put(k, v) }; mark("cfg") }
+    fun putIfGeneration(expected: Long, k: String, v: Any?): Boolean {
+        synchronized(this) {
+            if (expected != writeGeneration) return false
+            if (v == null) cfgJ.remove(k) else cfgJ.put(k, v)
+            dirty.add("cfg")
+        }
+        io.removeCallbacks(flusher); io.postDelayed(flusher, 350)
+        return true
+    }
     fun cfgJson(): JSONObject = synchronized(this) { JSONObject(cfgJ.toString()) }
     fun setStringList(k: String, l: List<String>) = put(k, l.joinToString("\u001f"))
     fun stringList(k: String): List<String> = s(k).split("\u001f").filter { it.isNotEmpty() }
@@ -108,7 +140,9 @@ object Store {
     }
     fun clear(n: String) = replace(n, emptyList())
     fun obj(n: String): JSONObject = synchronized(this) { readObj("o_$n") }
-    fun saveObj(n: String, o: JSONObject) { writeAtomic("o_$n", o.toString()) }
+    fun saveObj(n: String, o: JSONObject, expectedGeneration: Long? = null) {
+        writeAtomic("o_$n", o.toString(), expectedGeneration ?: writeGeneration)
+    }
     fun newId(): String = UUID.randomUUID().toString().take(8)
 
     /** Whole database as one JSON document (used by backup). */
@@ -134,9 +168,9 @@ object Store {
             else if (v is JSONObject && k.startsWith("o_")) { writeAtomic(k, v.toString()); n++ } } }
         changed(); return n
     }
-    val SECRET_KEYS = setOf("pin_hash", "ai_keys", "zite_key", "gemini_key")
+    val SECRET_KEYS = setOf("pin_hash", "reset_hash", "reset_salt", "reset_fail", "reset_lock_until", "ai_keys", "zite_key", "gemini_key")
     fun dataDir(): File = dir
-    fun today(): String = LocalDate.now().toString()
+    fun today(): String = LocalDate.now(Repo.zone()).toString()
 }
 
 object Log {

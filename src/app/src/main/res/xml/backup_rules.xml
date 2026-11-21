@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <include domain="file" path="data/"/>
+    <exclude domain="file" path="data/cfg.json"/>
+    <exclude domain="file" path="data/cfg.json.bak"/>
+    <exclude domain="file" path="data/cfg.json.tmp"/>
     <include domain="file" path="backups/"/>
     <include domain="file" path="wp/"/>
     <include domain="sharedpref" path="."/>
+    <exclude domain="sharedpref" path="secure_secrets.xml"/>
+    <exclude domain="sharedpref" path="m.xml"/>
 </full-backup-content>

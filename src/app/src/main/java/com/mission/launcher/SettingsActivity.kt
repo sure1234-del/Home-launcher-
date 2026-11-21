@@ -1,6 +1,8 @@
 package com.mission.launcher
 
 import android.app.Activity
+import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -44,7 +46,7 @@ class SettingsActivity : Activity() {
         root.addView(holder, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         push(Page("Settings") { home() })
-        intent.getStringExtra("path")?.let { p -> when (p) { "zite" -> push(Page("Zite and data") { zite() }) ; "ai" -> push(Page("AI") { ai() }); "setup" -> push(Page("Setup checklist") { setup() }) } }
+        intent.getStringExtra("path")?.let { p -> when (p) { "zite" -> push(Page("Zite and data") { zite() }) ; "ai" -> push(Page("AI") { ai() }); "setup" -> push(Page("Setup checklist") { setup() }); "reset" -> push(Page("Reset and data") { resetData() }) } }
     }
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -85,7 +87,13 @@ class SettingsActivity : Activity() {
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener { override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { v.text = "$p$suffix" }; override fun onStartTrackingTouch(s: SeekBar?) {}; override fun onStopTrackingTouch(s: SeekBar?) { Store.put(key, s!!.progress); after?.invoke() } }) }, lp(-1, -2, 2))
     }
     private fun secret(t: String, get: () -> String, set: (String) -> Unit, hint: String): View {
-        val k = get(); return value(t, hint, if (k.isBlank()) "Not set" else "••••" + k.takeLast(4)) { Dlg.input(this, t, "Paste here", "", false, false, "Save") { s -> set(s.trim()); redraw() } }
+        val k = get()
+        val detail = SecureStore.lastError?.let { "$hint $it" } ?: hint
+        return value(t, detail, if (k.isBlank()) "Not set" else "••••" + k.takeLast(4)) {
+            Dlg.input(this, t, "Paste here", "", false, false, "Save", true) { s ->
+                try { set(s.trim()); redraw() } catch (e: Exception) { Log.e("secret-save", e); toast("Could not save this key securely") }
+            }
+        }
     }
     private fun multiPick(titleS: String, key: String, defaults: Set<String> = emptySet(), max: Int = 0) {
         val apps = Apps.list; val cur = if (Store.has(key)) Store.stringList(key).toMutableSet() else defaults.toMutableSet()
@@ -98,6 +106,7 @@ class SettingsActivity : Activity() {
     private fun LinearLayout.home() {
         val z = Zite.data(this@SettingsActivity)
         group(folder("checkc", T.sage, "Setup checklist", "${setupItems().count { it.ok }} of ${setupItems().size} ready") { setup() })
+        group(folder("shield", T.danger, "Reset and data", "Password-protected cache deletion and restore") { resetData() })
         group(folder("refresh", T.sage, "Zite and data", if (Zite.hasKey()) "Hourly sync on" else "Add API key for live sync") { zite() },
             folder("sparkle", T.plum, "AI assistants", Ai.provider().name + " - " + Ai.model()) { ai() })
         group(folder("drop", T.teal, "Water", "${Water.goal()} ml goal, reminders ${if (Water.enabled()) "on" else "off"}") { water() },
@@ -121,14 +130,13 @@ class SettingsActivity : Activity() {
     private fun LinearLayout.zite() {
         val c = this@SettingsActivity
         label("Connection")
-        group(secret("API key", { Store.s("zite_key") }, { Store.put("zite_key", it); Zite.invalidate() }, "Zite > Settings > API keys. Stored only on this device."),
+        group(secret("API key", { SecureStore.get("zite") }, { SecureStore.put("zite", it); Zite.invalidate() }, "Zite > Settings > API keys. Encrypted with Android Keystore."),
             value("Database id", null, Zite.db().take(10) + "...") { Dlg.input(c, "Database id", Zite.DEFAULT_DB, Zite.db()) { s -> Store.put("zite_db", s.ifBlank { Zite.DEFAULT_DB }); redraw() } },
             value("Portal link", "Opened by Quick links", Store.s("zite_portal", Zite.PORTAL).removePrefix("https://").take(26) + "...") { Dlg.input(c, "Portal URL", "https://", Store.s("zite_portal", Zite.PORTAL)) { s -> Store.put("zite_portal", s.ifBlank { Zite.PORTAL }); redraw() } })
         label("Sync")
         val last = Store.l("zite_last_ok", 0)
         group(action("refresh", T.sage, "Sync now", if (last > 0) "Last: " + java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.ENGLISH).format(java.util.Date(last)) else "Never synced") {
-            if (!Zite.hasKey()) toast("Add the API key first") else { toast("Syncing..."); Thread { val m = Zite.sync(c, true); runOnUiThread { toast(m); redraw() } }.start() } },
-            action("trash", T.danger, "Clear cached Zite data", "Falls back to the built-in snapshot until next sync") { Store.saveObj("cache_zite", org.json.JSONObject()); Zite.invalidate(); toast("Cleared") })
+            if (!Zite.hasKey()) toast("Add the API key first") else { toast("Syncing..."); Thread { val m = Zite.sync(c, true); runOnUiThread { toast(m); redraw() } }.start() } })
         note("Updates automatically every hour while the phone is on (also when the launcher is closed). Syllabus, mocks, attempts and responses come from your Zite database. Only study-relevant events are shown in Upcoming.")
         if (Store.s("zite_last_err").isNotBlank()) { label("Last error"); note(Store.s("zite_last_err")) }
     }
@@ -144,8 +152,7 @@ class SettingsActivity : Activity() {
             action(null, 0, "Type a model name manually", Ai.model(p)) { Dlg.input(c, "Model id", p.model, Ai.model(p)) { s -> Store.put("ai_model_${p.id}", s); redraw() } })
         if (p.needsBase) group(value("Base URL", "OpenAI-compatible endpoint", Ai.base(p).removePrefix("https://").take(24)) { Dlg.input(c, "Base URL", p.base, Ai.base(p)) { s -> Store.put("ai_base_${p.id}", s); redraw() } })
         label("Behaviour")
-        group(sw("Gemini can act on your data", "Add tasks, notes, water, events, start timer from chat", "ai_tools", true),
-            action("trash", T.danger, "Clear chat history", "${Ai.history().size} messages stored locally. Chat never hits a limit: older turns are summarised.") { Dlg.confirm(c, "Clear all chat?", "This cannot be undone.", "Clear") { Ai.clearHistory(); toast("Cleared") } })
+        group(sw("Gemini can act on your data", "Add tasks, notes, water, events, start timer from chat", "ai_tools", true))
         label("Other assistants on this phone")
         group(action("sparkle", T.plum, "Open Xiaomi / system assistant", "Hyper AI / Google Assistant, whichever is the default") { if (!Ai.assist(c)) toast("No assistant found") },
             *Ai.installedAiApps(c).map { a -> action(null, 0, a.label, "Open app") { if (!Ai.openApp(c, a.pkg)) toast("Cannot open") } }.toTypedArray().ifEmpty { arrayOf(note0("No other AI apps detected")) })
@@ -160,14 +167,22 @@ class SettingsActivity : Activity() {
         group(sw("Water reminders", "Persistent notification until you act on it", "water_on", true) { Water.arm(c); if (!it) Water.clear(c) },
             sw("Insist until I drink", "If dismissed it returns, getting firmer each time", "water_insist", true),
             num("Daily goal", "water_goal", 3000, 500, 8000, "ml") { Water.arm(c) },
-            num("Start hour", "water_start", 7, 0, 22, "h") { Water.arm(c) }, num("End hour", "water_end", 22, 1, 23, "h") { Water.arm(c) },
+            value("Start time", "IST (HH:mm)", "%02d:%02d".format(Water.startTime().hour, Water.startTime().minute)) {
+                Dlg.time(c, Water.startTime()) { Store.put("water_start_time", it); Water.arm(c); redraw() }
+            },
+            value("End time", "IST (HH:mm)", "%02d:%02d".format(Water.endTime().hour, Water.endTime().minute)) {
+                Dlg.time(c, Water.endTime()) { Store.put("water_end_time", it); Water.arm(c); redraw() }
+            },
+            action("layers", T.teal, "Floating water card", if (c.canOverlay()) "Allowed" else "Allow display over other apps") {
+                try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
+                catch (e: Exception) { Log.e("water-overlay-settings", e); toast("Could not open overlay settings") }
+            },
             num("Remind every", "water_interval", 90, 20, 240, "min") { Water.arm(c) },
             num("Nag again after", "water_nag", 8, 2, 30, "min"))
         label("Quick amounts")
         group(value("Cup sizes", "Shown as buttons in the notification and card", Water.cups().joinToString(", ") + " ml") { Dlg.input(c, "Cup sizes (ml, comma separated)", "150,250,500", Water.cups().joinToString(",")) { s -> Store.put("water_cups", s); redraw() } })
         label("Test")
-        group(action("bell", T.teal, "Send a reminder now", "Check the notification, buttons and floating card") { Water.remind(c, false) },
-            action("trash", T.danger, "Remove today's entries", "${Water.todayEntries().size} entries") { Dlg.confirm(c, "Remove all of today's water?", "", "Remove") { Water.todayEntries().forEach { Water.remove(it.optString("id")) }; redraw() } })
+        group(action("bell", T.teal, "Send a reminder now", "Check the notification, buttons and floating card") { Water.remind(c, false) })
         note("Water history is part of the daily backup (device and your chosen Drive folder).")
     }
 
@@ -178,6 +193,9 @@ class SettingsActivity : Activity() {
         group(num("Study goal", "study_goal_min", 360, 30, 1000, "min"))
         label("Timer")
         group(num("Pomodoro focus", "pomo_work", 25, 5, 120, "min"), num("Pomodoro break", "pomo_break", 5, 1, 60, "min"),
+            sw("Auto-pause outside Study apps", "Requires Usage access; add reading apps under Apps and dock", "timer_auto_pause", true) {
+                if (it && !Usage.granted(c)) Dlg.confirm(c, "Allow Usage access", "Usage access is needed to tell study apps from video and music apps.", "Open settings") { Usage.openSettings(c) }
+            },
             action("layers", T.teal, "Floating timer permission", if (c.canOverlay()) "Allowed" else "Needed to float over other apps") { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) })
         label("Focus mode")
         group(sw("Do Not Disturb during focus", "Needs Do Not Disturb access", "focus_dnd", true) { if (it) try { startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) } catch (e: Exception) { } },
@@ -193,7 +211,6 @@ class SettingsActivity : Activity() {
     private fun LinearLayout.exam() {
         val c = this@SettingsActivity
         group(value("Prelims date", null, Store.s("exam_date", "2027-05-23")) { Dlg.date(c, Repo.examDate()) { d -> Store.put("exam_date", d.toString()); redraw() } },
-            action("trash", T.danger, "Clear schedule blocks", "${Store.rows("schedule").size} blocks") { Dlg.confirm(c, "Clear weekly schedule?", "", "Clear") { Store.clear("schedule"); redraw() } },
             action("sparkle", T.sage, "Add balanced weekly template", "Five study blocks a day") { Cards.template(c) })
         note("The countdown, lock-screen text and AI context use this date.")
     }
@@ -219,14 +236,13 @@ class SettingsActivity : Activity() {
         label("My photos")
         group(action("plus", T.sage, "Add photo", "${Wallpaper.photos(c).size} saved") { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_PHOTO) },
             choice("Rotation", "wp_photo_mode", "daily", listOf("daily" to "New photo daily", "hourly" to "New photo hourly", "single" to "First photo only")),
-            slider("Blur", "wp_blur", 0, 24, ""), action("trash", T.danger, "Remove all photos") { Wallpaper.clearPhotos(c); redraw() })
+            slider("Blur", "wp_blur", 0, 24, ""))
     }
 
     // ---------- Home screen ----------
     private fun LinearLayout.homeScreen() {
         val c = this@SettingsActivity
-        group(action("sliders", T.olive, "Edit home layout", "Move, add, remove cards and pages") { setResult(RESULT_OK); startActivity(Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("edit", true).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)); finish() },
-            action("trash", T.danger, "Reset layout to default", "Today, Progress, Study") { Dlg.confirm(c, "Reset layout?", "System widgets are removed.", "Reset") { HomeLayout.reset(); toast("Reset") } })
+        group(action("sliders", T.olive, "Edit home layout", "Move, add, remove cards and pages") { setResult(RESULT_OK); startActivity(Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("edit", true).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)); finish() })
         note("Tip: tap the sliders icon on the home header or long-press the page dots to edit. Long-press on an app never creates a pin; pins are set under Apps and dock.")
     }
 
@@ -288,12 +304,121 @@ class SettingsActivity : Activity() {
             if (tree.isNotBlank()) action("close", T.danger, "Stop Drive backups", null) { Store.put("backup_tree", null); redraw() } else note0("Uses your signed-in Google account through the system picker. No keys are stored."))
         note("Android Auto Backup also copies the launcher data to your Google account when phone backup is on.")
         label("Files")
-        group(action("up", T.slate, "Export to file", "Save a copy anywhere") { startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/json").putExtra(Intent.EXTRA_TITLE, "mission-backup-${LocalDate.now()}.json"), REQ_EXPORT) },
-            action("up", T.slate, "Export study hours (CSV)", "Opens in Excel or Sheets") { startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/csv").putExtra(Intent.EXTRA_TITLE, "study-hours-${LocalDate.now()}.csv"), REQ_CSV) },
-            action("down", T.slate, "Import from file", "Merges with current data") { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_IMPORT) })
-        label("Local copies (last 7 days)")
+        group(action("up", T.slate, "Export to file", "Save a copy anywhere") { startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/json").putExtra(Intent.EXTRA_TITLE, "mission-backup-${LocalDate.now(Repo.zone())}.json"), REQ_EXPORT) },
+            action("up", T.slate, "Export study hours (CSV)", "Opens in Excel or Sheets") { startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/csv").putExtra(Intent.EXTRA_TITLE, "study-hours-${LocalDate.now(Repo.zone())}.csv"), REQ_CSV) })
+        label("Local copies")
         val files = Backup.localFiles(c); if (files.isEmpty()) group(note0("None yet"))
-        else group(*files.map { f -> action("refresh", T.sage, f.name.removePrefix("mission-backup-").removeSuffix(".json"), "${f.length() / 1024} KB - tap to restore") { Dlg.confirm(c, "Restore ${f.name}?", "Current data is replaced.", "Restore") { val n = Backup.restoreLocal(c, f); toast(if (n >= 0) "Restored" else "Failed") } } }.toTypedArray())
+        else group(note0("${files.size} local copies. Restore only from Settings > Reset and data."))
+    }
+
+    // ---------- Reset and data ----------
+    private fun LinearLayout.resetData() {
+        val c = this@SettingsActivity
+        if (!ResetGate.isSet()) {
+            label("Reset password")
+            note("Set a 6 to 12 digit password. It is stored as a salted PBKDF2 hash and is never included in backups.")
+            ResetGate.ensureSet(c) { redraw() }
+            return
+        }
+
+        note("Every deletion first saves an automatic backup. A reset password is required for each action.")
+        label("Per-cache deletion")
+        group(
+            action("timer", T.amber, "Study sessions", "${Store.rows("sessions").size} saved sessions") {
+                gatedReset("Delete study sessions?") { Store.clear("sessions") }
+            },
+            action("checkc", T.sage, "Syllabus ticks", "Clear all manual syllabus progress") {
+                gatedReset("Delete all syllabus ticks?") { Store.setStringList("syl_done", emptyList()) }
+            },
+            action("drop", T.teal, "Water today", "${Water.todayEntries().size} entries") {
+                gatedReset("Delete today's water entries?") {
+                    Water.todayEntries().forEach { Water.remove(it.optString("id")) }
+                    Water.clear(c); Water.arm(c)
+                }
+            },
+            action("sparkle", T.plum, "AI chat", "${Ai.history().size} saved messages") {
+                gatedReset("Delete AI chat history?") { Ai.clearHistory() }
+            },
+            action("calendar", T.terra, "Schedule", "${Store.rows("schedule").size} schedule blocks") {
+                gatedReset("Delete the schedule?") { Store.clear("schedule") }
+            },
+            action("refresh", T.slate, "Zite cache", "Remove locally cached Zite data") {
+                gatedReset("Delete the Zite cache?") {
+                    Store.saveObj("cache_zite", org.json.JSONObject())
+                    Zite.invalidate()
+                }
+            },
+            action("image", T.slate, "Wallpaper photos", "${Wallpaper.photos(c).size} saved photos") {
+                gatedReset("Delete saved wallpaper photos?") { Wallpaper.clearPhotos(c) }
+            },
+            action("grid", T.olive, "Home layout", "Reset app pages; keep Android widgets") {
+                gatedReset("Reset app pages?") { HomeLayout.reset() }
+            },
+            action("grid", T.slate, "Remove Android widget", "${HomeLayout.widgetIds().size} placed") { removeHomeWidget() }
+        )
+
+        label("Restore")
+        group(action("down", T.slate, "Import backup", "Choose a file; current data is backed up first") {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_IMPORT)
+        })
+        val files = Backup.localFiles(c)
+        if (files.isNotEmpty()) group(*files.map { file ->
+            action("refresh", T.sage, file.name.removePrefix("mission-backup-").removeSuffix(".json"), "${file.length() / 1024} KB") {
+                gatedReset("Restore ${file.name}?") {
+                    val result = Backup.restoreLocal(c, file)
+                    if (result < 0) throw IllegalStateException("Backup restore failed")
+                    Zite.invalidate()
+                }
+            }
+        }.toTypedArray())
+
+        label("Final option")
+        group(action("trash", T.danger, "Erase all launcher data", "Last resort; cannot be undone") {
+            gatedReset("Erase all launcher data?") {
+                TimerService.stop(c)
+                Water.clear(c)
+                Sched.cancelWater(c)
+                Wallpaper.clearPhotos(c)
+                SecureStore.eraseAll()
+                Store.eraseAll()
+                Zite.invalidate()
+                Store.put("water_on", false)
+                Store.flushNow()
+            }
+        })
+    }
+
+    private fun gatedReset(title: String, operation: () -> Unit) {
+        Dlg.confirm(this, title, "A local backup is saved before changes are made.", "Continue") {
+            ResetGate.verifyAndBackup(this) {
+                try {
+                    operation()
+                    Store.changed()
+                    toast("Backup saved. Reset complete.")
+                    redraw()
+                } catch (e: Exception) {
+                    Log.e("reset-data", e)
+                    toast("Reset failed: ${e.message ?: "unknown error"}")
+                }
+            }
+        }
+    }
+
+    private fun removeHomeWidget() {
+        val c = this
+        val ids = HomeLayout.widgetIds()
+        if (ids.isEmpty()) { toast("No Android widgets are placed"); return }
+        val manager = AppWidgetManager.getInstance(c)
+        val labels = ids.map { id ->
+            manager.getAppWidgetInfo(id)?.loadLabel(packageManager)?.toString() ?: "Android widget #$id"
+        }
+        Dlg.choose(c, "Select a widget to remove", labels) { index ->
+            val id = ids[index]
+            gatedReset("Remove ${labels[index]}?") {
+                check(HomeLayout.removeWidget(id)) { "Widget is no longer on the home screen" }
+                AppWidgetHost(c, 1024).deleteAppWidgetId(id)
+            }
+        }
     }
 
     // ---------- Permissions ----------
@@ -316,8 +441,7 @@ class SettingsActivity : Activity() {
         val c = this@SettingsActivity
         group(value("Version", null, try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }) { },
             value("Data stored", "On this device (app storage)", "${Store.rows("sessions").size} sessions") { },
-            action("info", T.text2, "Show recent error log", "For troubleshooting") { Dlg.info(c, "Log", Log.dump().ifBlank { "No errors" }) },
-            action("trash", T.danger, "Erase all launcher data", "Cannot be undone") { Dlg.confirm(c, "Erase everything?", "Tasks, notes, sessions, water and settings are deleted from this device.", "Erase") { verifyThen { Store.eraseAll(); toast("Erased"); finishAffinity() } } })
+            action("info", T.text2, "Show recent error log", "For troubleshooting") { Dlg.info(c, "Log", Log.dump().ifBlank { "No errors" }) })
     }
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -327,9 +451,17 @@ class SettingsActivity : Activity() {
         when (req) {
             REQ_TREE -> { Backup.setTree(this, u); Thread { val m = Backup.runNow(this); runOnUiThread { toast(m); redraw() } }.start() }
             REQ_FILE -> { Backup.setFile(this, u); Thread { val m = Backup.runNow(this); runOnUiThread { toast(m); redraw() } }.start() }
-            REQ_CSV -> toast(if (try { contentResolver.openOutputStream(u, "wt")?.use { o -> o.write(Repo.csv().toByteArray()) }; true } catch (e: Exception) { false }) "Exported" else "Export failed")
+            REQ_CSV -> toast(if (try {
+                val output = contentResolver.openOutputStream(u, "wt") ?: throw IllegalStateException("Could not open CSV destination")
+                output.use { it.write(Repo.csv().toByteArray()) }
+                true
+            } catch (e: Exception) { Log.e("csv-export", e); false }) "Exported" else "Export failed")
             REQ_EXPORT -> toast(if (Backup.export(this, u)) "Exported" else "Export failed")
-            REQ_IMPORT -> { val n = Backup.import(this, u, true); toast(if (n >= 0) "Imported" else "Not a valid backup"); redraw() }
+            REQ_IMPORT -> gatedReset("Import this backup?") {
+                val n = Backup.import(this, u, false)
+                if (n < 0) throw IllegalArgumentException("The selected file is not a valid backup")
+                Zite.invalidate()
+            }
             REQ_PHOTO -> { toast(if (Wallpaper.addPhoto(this, u)) "Photo added" else "Could not read photo"); redraw() }
         }
     }

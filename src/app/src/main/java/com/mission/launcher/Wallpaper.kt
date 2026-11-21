@@ -166,23 +166,25 @@ object Wallpaper {
     fun enabled() = Store.b("wp_sys", true)
     fun scene() = Store.s("wp_scene", "hills")
     fun opts() = WOpts(Store.b("wp_grain", true), Store.b("wp_comfort", true), Store.b("wp_season", true), Store.i("wp_dim", 6) / 100f)
-    fun hourNow(): Float { val n = LocalTime.now(); return n.hour + n.minute / 60f }
+    fun hourNow(): Float { val n = LocalTime.now(Repo.zone()); return n.hour + n.minute / 60f }
     fun photos(c: Context): List<File> = File(c.filesDir, "wp").listFiles()?.filter { it.extension == "jpg" }?.sortedBy { it.name } ?: emptyList()
 
     fun build(c: Context, w: Int, h: Int, forLock: Boolean = false): Bitmap {
+        val now = LocalDate.now(Repo.zone())
         val sc = scene(); val o = opts(); val pw = if (Store.b("wp_parallax", true)) (w * 1.2f).toInt() else w
-        val bm: Bitmap = if (sc == "photo") { photoBitmap(c, pw, h, o) ?: Scenes.render(pw, h, hourNow(), "hills", LocalDate.now().monthValue, o, LocalDate.now().dayOfYear) }
-        else Scenes.render(pw, h, if (Store.b("wp_auto", true)) hourNow() else Store.i("wp_fixed_hour", 12).toFloat(), sc, LocalDate.now().monthValue, o, LocalDate.now().dayOfYear)
+        val bm: Bitmap = if (sc == "photo") { photoBitmap(c, pw, h, o) ?: Scenes.render(pw, h, hourNow(), "hills", now.monthValue, o, now.dayOfYear) }
+        else Scenes.render(pw, h, if (Store.b("wp_auto", true)) hourNow() else Store.i("wp_fixed_hour", 12).toFloat(), sc, now.monthValue, o, now.dayOfYear)
         if (forLock && Store.b("wp_lock_text", true)) {
             val cv = Canvas(bm); val p = Paint(Paint.ANTI_ALIAS_FLAG); p.typeface = T.font(2); p.textAlign = Paint.Align.CENTER
-            val days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), Repo.examDate())
+            val days = java.time.temporal.ChronoUnit.DAYS.between(now, Repo.examDate())
             p.textSize = h * 0.032f; p.color = Color.WHITE; p.alpha = 190; cv.drawText("$days days to Prelims", pw / 2f, h * 0.93f, p)
         }
         return bm
     }
     private fun photoBitmap(c: Context, w: Int, h: Int, o: WOpts): Bitmap? {
         val list = photos(c); if (list.isEmpty()) return null
-        val idx = when (Store.s("wp_photo_mode", "daily")) { "hourly" -> (LocalDate.now().dayOfYear * 24 + LocalTime.now().hour) % list.size; "single" -> 0; else -> LocalDate.now().dayOfYear % list.size }
+        val date = LocalDate.now(Repo.zone())
+        val idx = when (Store.s("wp_photo_mode", "daily")) { "hourly" -> (date.dayOfYear * 24 + LocalTime.now(Repo.zone()).hour) % list.size; "single" -> 0; else -> date.dayOfYear % list.size }
         val src = try { BitmapFactory.decodeFile(list[idx].path) } catch (e: Throwable) { null } ?: return null
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); val cv = Canvas(out); val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val s = max(w.toFloat() / src.width, h.toFloat() / src.height); val dw = src.width * s; val dh = src.height * s
@@ -226,5 +228,13 @@ object Wallpaper {
             File(dir, "p${System.currentTimeMillis()}.jpg").outputStream().use { bm.compress(Bitmap.CompressFormat.JPEG, 90, it) }; bm.recycle(); true
         } catch (e: Throwable) { Log.e("wp-add", e); false }
     }
-    fun clearPhotos(c: Context) { File(c.filesDir, "wp").listFiles()?.forEach { it.delete() } }
+    fun clearPhotos(c: Context) {
+        val directory = File(c.filesDir, "wp")
+        if (directory.exists()) {
+            val files = directory.listFiles() ?: throw IllegalStateException("Could not list wallpaper photos")
+            val failures = files.filter { it.exists() && !it.delete() }
+            check(failures.isEmpty()) { "Could not delete ${failures.size} wallpaper photos" }
+            check(directory.delete()) { "Could not remove wallpaper photo folder" }
+        }
+    }
 }

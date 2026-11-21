@@ -96,13 +96,12 @@ class ChatActivity : Activity() {
         if (req == REQ_VOICE && res == RESULT_OK) d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { input.setText(it); input.setSelection(it.length) }
     }
     private fun menu() {
-        Dlg.choose(this, "Chat", listOf("Switch assistant", "Share last answer", "Open Xiaomi / system assistant", "Clear chat", "AI settings")) { i ->
+        Dlg.choose(this, "Chat", listOf("Switch assistant", "Share last answer", "Open Xiaomi / system assistant", "AI settings")) { i ->
             when (i) {
                 0 -> Dlg.choose(this, "Assistant", Ai.providers.map { it.name }) { k -> Store.put("ai_provider", Ai.providers[k].id); refreshSub() }
                 1 -> Ai.history().lastOrNull { it.optString("role") != "user" }?.let { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, it.optString("text")), "Share")) }
                 2 -> if (!Ai.assist(this)) toast("No assistant found")
-                3 -> Dlg.confirm(this, "Clear chat?", "All messages are removed from this device.", "Clear") { Ai.clearHistory(); render() }
-                4 -> startActivity(Intent(this, SettingsActivity::class.java).putExtra("path", "ai"))
+                3 -> startActivity(Intent(this, SettingsActivity::class.java).putExtra("path", "ai"))
             }
         }
     }

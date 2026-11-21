@@ -24,7 +24,7 @@ object Focus {
         Store.put("focus_end", 0L); dnd(c, false)
         if (TimerState.active() && TimerState.mode() == "stopwatch" && TimerState.subject() == Store.s("focus_subject")) { TimerState.finish(true); TimerService.stop(c) }
         else Repo.addSession(e - len * 60000L, e, Store.s("focus_subject", "Focus"), "focus")
-        Store.put("focus_done_day", LocalDate.now().toString()); Store.changed()
+        Store.put("focus_done_day", LocalDate.now(Repo.zone()).toString()); Store.changed()
     }
     fun dnd(c: Context, on: Boolean) {
         if (!Store.b("focus_dnd", true)) return
