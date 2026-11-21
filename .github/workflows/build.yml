@@ -23,16 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Prepare project (zip or plain folders)
+      - name: Prepare project (any zip name, or plain folders)
         run: |
-          if [ -f Mission-Launcher-Source.zip ]; then
+          ZIP=$(ls -S ./*.zip 2>/dev/null | head -n 1 || true)
+          if [ -n "$ZIP" ]; then
+            echo "Using zip: $ZIP"
             mkdir -p proj
-            unzip -q -o Mission-Launcher-Source.zip -d proj
+            unzip -q -o "$ZIP" -d proj
+            # if the zip contains one wrapper folder, step into it
+            if [ ! -f proj/app/build.gradle.kts ]; then
+              INNER=$(dirname "$(find proj -maxdepth 3 -path '*/app/build.gradle.kts' | head -n 1)" 2>/dev/null | xargs -r dirname)
+              if [ -n "$INNER" ] && [ -d "$INNER" ]; then mv proj proj_old && mv "$INNER" proj; fi
+            fi
           elif [ -f build.gradle.kts ]; then
             mkdir -p proj
             tar --exclude=./proj --exclude=./.git -cf - . | tar -xf - -C proj
           else
-            echo "::error::Mission-Launcher-Source.zip repo ke root me upload karo"
+            echo "::error::Repo me source zip upload karo (koi bhi naam chalega, jaise Mission-Launcher-Source (1).zip)"
             exit 1
           fi
           ls -la proj
