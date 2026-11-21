@@ -1,0 +1,72 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare project (zip or plain folders)
+        run: |
+          if [ -f Mission-Launcher-Source.zip ]; then
+            mkdir -p proj
+            unzip -q -o Mission-Launcher-Source.zip -d proj
+          elif [ -f build.gradle.kts ]; then
+            mkdir -p proj
+            tar --exclude=./proj --exclude=./.git -cf - . | tar -xf - -C proj
+          else
+            echo "::error::Mission-Launcher-Source.zip repo ke root me upload karo"
+            exit 1
+          fi
+          ls -la proj
+          test -f proj/app/build.gradle.kts
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        working-directory: proj
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Check APK exists
+        run: |
+          ls -la proj/app/build/outputs/apk/debug/
+          test -f proj/app/build/outputs/apk/debug/app-debug.apk
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Mission-Launcher-APK
+          path: proj/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish release (optional, artifact still works if this fails)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest -y --cleanup-tag || true
+          gh release create latest proj/app/build/outputs/apk/debug/app-debug.apk --title "Mission Launcher (latest)" --notes "Debug build ${{ github.sha }}"
