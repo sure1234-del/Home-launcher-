@@ -22,11 +22,27 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare project (any zip name, or plain folders)
         run: |
-          ZIP=$(ls -S ./*.zip 2>/dev/null | head -n 1 || true)
-          if [ -n "$ZIP" ]; then
+          if [ -f src/app/build.gradle.kts ]; then
+            echo "Using maintained source tree: src/"
+            mkdir -p proj
+            cp -R src/. proj/
+          elif [ -f app/build.gradle.kts ]; then
+            echo "Using root source tree"
+            mkdir -p proj
+            tar --exclude=./proj --exclude=./.git -cf - . | tar -xf - -C proj
+          else
+            ZIP=$(ls -S ./*.zip 2>/dev/null | head -n 1 || true)
+            if [ -z "$ZIP" ]; then
+              echo "::error::Repo me source zip upload karo (koi bhi naam chalega, jaise Mission-Launcher-Source (1).zip)"
+              exit 1
+            fi
             echo "Using zip: $ZIP"
             mkdir -p proj
             unzip -q -o "$ZIP" -d proj
@@ -35,12 +51,6 @@ jobs:
               INNER=$(dirname "$(find proj -maxdepth 3 -path '*/app/build.gradle.kts' | head -n 1)" 2>/dev/null | xargs -r dirname)
               if [ -n "$INNER" ] && [ -d "$INNER" ]; then mv proj proj_old && mv "$INNER" proj; fi
             fi
-          elif [ -f build.gradle.kts ]; then
-            mkdir -p proj
-            tar --exclude=./proj --exclude=./.git -cf - . | tar -xf - -C proj
-          else
-            echo "::error::Repo me source zip upload karo (koi bhi naam chalega, jaise Mission-Launcher-Source (1).zip)"
-            exit 1
           fi
           ls -la proj
           test -f proj/app/build.gradle.kts
@@ -51,12 +61,18 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: "8.9"
 
       - name: Build debug APK
         working-directory: proj
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Run lint and unit tests
+        working-directory: proj
+        run: ./gradlew lint testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build release APK
+        working-directory: proj
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Check APK exists
         run: |

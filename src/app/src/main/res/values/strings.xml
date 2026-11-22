@@ -1,0 +1,6 @@
+<resources>
+    <string name="cap">Quick capture</string>
+    <string name="cap_long">Quick note or task</string>
+    <string name="a11y_desc">Circle to Search (takes a screenshot only when you ask), lock screen by double tap, and notification shade gesture. Mission never reads your screen content.</string>
+    <string name="live_wallpaper_description">Mission live sky for Prayagraj with IST time, real sun and moon positions, and Open-Meteo weather.</string>
+</resources>
