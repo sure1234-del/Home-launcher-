@@ -1,6 +1,7 @@
 package com.mission.launcher
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.os.Process
 import android.os.StrictMode
 import android.util.Log
@@ -20,6 +21,21 @@ class MissionApplication : Application() {
         }
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            Apps.iconCacheClear?.invoke()
+            try {
+                MissionWallpaperService.releaseCachedFrame()
+            } catch (_: Exception) {
+            }
+        }
+        try {
+            val prefs = getSharedPreferences("mission_diagnostics", MODE_PRIVATE)
+            prefs.edit().putLong("last_trim", System.currentTimeMillis()).putInt("last_trim_level", level).apply()
+        } catch (_: Exception) { }
+    }
+
     private fun installCrashLogger() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
@@ -29,6 +45,13 @@ class MissionApplication : Application() {
                     "Thread: ${thread.name}\n$trace",
                     StandardCharsets.UTF_8
                 )
+                val prefs = getSharedPreferences("mission_diagnostics", MODE_PRIVATE)
+                val now = System.currentTimeMillis()
+                val first = prefs.getLong("crash_window_first", 0L)
+                val window = if (first <= 0L || now - first > 5 * 60 * 1000L) now else first
+                val count = if (window == now) 1 else prefs.getInt("crash_window_count", 0) + 1
+                prefs.edit().putLong("crash_window_first", window).putInt("crash_window_count", count)
+                    .putBoolean("safe_mode", count >= 3).apply()
             } catch (loggingError: Throwable) {
                 Log.e("MissionLauncher", "Unable to write the local crash log", loggingError)
             } finally {

@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityButtonController
 import android.app.Activity
 import android.app.PendingIntent
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -145,6 +146,8 @@ private class Lasso(c: Context, val bm: Bitmap, val done: (Bitmap?) -> Unit, val
 /** Quick Settings tile: collapse the shade, then capture. */
 class CircleTile : TileService() {
     override fun onStartListening() { qsTile?.state = Tile.STATE_INACTIVE; qsTile?.label = "Circle to Search"; qsTile?.updateTile() }
+    @SuppressLint("StartActivityAndCollapseDeprecated")
+    @Suppress("DEPRECATION")
     override fun onClick() {
         val i = Intent(this, CircleActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (Build.VERSION.SDK_INT >= 34) startActivityAndCollapse(PendingIntent.getActivity(this, 1, i, PendingIntent.FLAG_IMMUTABLE)) else @Suppress("DEPRECATION") startActivityAndCollapse(i)

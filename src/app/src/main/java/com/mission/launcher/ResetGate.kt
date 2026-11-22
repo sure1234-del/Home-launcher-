@@ -2,19 +2,29 @@ package com.mission.launcher
 
 import android.app.Activity
 import android.text.InputType
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.view.WindowManager
+import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
+import javax.crypto.Mac
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 import javax.crypto.spec.PBEKeySpec
 
 object ResetGate {
     private const val ITERATIONS = 120_000
     private const val KEY_BITS = 256
     private const val MAX_ATTEMPTS = 5
+    private const val HMAC_ALIAS = "mission_reset_verifier_v1"
 
-    fun isSet(): Boolean = Store.s("reset_hash").isNotBlank() && Store.s("reset_salt").isNotBlank()
+    fun isSet(): Boolean =
+        (Store.s("reset_verifier").isNotBlank() && Store.s("reset_salt").isNotBlank()) ||
+        (Store.s("reset_hash").isNotBlank() && Store.s("reset_salt").isNotBlank())
 
     fun ensureSet(activity: Activity, onReady: () -> Unit) {
         if (isSet()) onReady() else setPassword(activity, onReady)
@@ -82,21 +92,24 @@ object ResetGate {
             setPadding(T.dp(24), T.dp(8), T.dp(24), 0)
             addView(input, LinearLayout.LayoutParams(-1, -2))
         }
-        Dlg.builder(activity)
+        val dialog = Dlg.builder(activity)
             .setTitle(title)
             .setView(container)
             .setPositiveButton("Continue") { _, _ -> onEntered(input.text.toString()) }
             .setNegativeButton("Cancel", null)
             .show()
+        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     private fun save(password: String): Boolean {
         try {
             val salt = ByteArray(16)
             SecureRandom().nextBytes(salt)
-            val hash = derive(password, salt)
+            val derived = derive(password, salt)
+            val verifier = hmac(derived)
             Store.put("reset_salt", android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP))
-            Store.put("reset_hash", android.util.Base64.encodeToString(hash, android.util.Base64.NO_WRAP))
+            Store.put("reset_verifier", android.util.Base64.encodeToString(verifier, android.util.Base64.NO_WRAP))
+            Store.put("reset_hash", null)
             Store.put("reset_fail", 0)
             Store.put("reset_lock_until", 0L)
             Store.flushNow()
@@ -108,20 +121,27 @@ object ResetGate {
     }
 
     private fun check(password: String): Boolean {
-        val salt = try {
-            android.util.Base64.decode(Store.s("reset_salt"), android.util.Base64.NO_WRAP)
-        } catch (e: IllegalArgumentException) {
-            Log.e("reset-password", e)
-            return false
+        val verifier = Store.s("reset_verifier")
+        val salt = try { android.util.Base64.decode(Store.s("reset_salt"), android.util.Base64.NO_WRAP) }
+        catch (e: IllegalArgumentException) { Log.e("reset-password", e); return false }
+        if (verifier.isBlank()) {
+            val legacy = try { android.util.Base64.decode(Store.s("reset_hash"), android.util.Base64.NO_WRAP) }
+            catch (e: IllegalArgumentException) { Log.e("reset-password", e); return false }
+            val ok = MessageDigest.isEqual(legacy, derive(password, salt))
+            if (ok) {
+                save(password)
+                Store.put("reset_fail", 0)
+                Store.put("reset_lock_until", 0L)
+                Store.flushNow()
+            } else {
+                recordFailure()
+            }
+            return ok
         }
-        val expected = try {
-            android.util.Base64.decode(Store.s("reset_hash"), android.util.Base64.NO_WRAP)
-        } catch (e: IllegalArgumentException) {
-            Log.e("reset-password", e)
-            return false
-        }
+        val expected = try { android.util.Base64.decode(verifier, android.util.Base64.NO_WRAP) }
+        catch (e: IllegalArgumentException) { Log.e("reset-password", e); return false }
         val actual = try {
-            derive(password, salt)
+            hmac(derive(password, salt))
         } catch (e: Exception) {
             Log.e("reset-password", e)
             return false
@@ -131,11 +151,7 @@ object ResetGate {
             Store.put("reset_fail", 0)
             Store.put("reset_lock_until", 0L)
         } else {
-            val failures = Store.i("reset_fail") + 1
-            Store.put("reset_fail", failures)
-            if (failures >= MAX_ATTEMPTS) {
-                Store.put("reset_lock_until", System.currentTimeMillis() + 30_000L * (failures - MAX_ATTEMPTS + 1))
-            }
+            recordFailure()
         }
         Store.flushNow()
         return ok
@@ -148,6 +164,34 @@ object ResetGate {
         } finally {
             spec.clearPassword()
         }
+    }
+
+    private fun hmac(value: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(hmacKey())
+        return mac.doFinal(value)
+    }
+
+    private fun recordFailure() {
+        val failures = Store.i("reset_fail") + 1
+        Store.put("reset_fail", failures)
+        if (failures >= MAX_ATTEMPTS) {
+            val periods = 1L shl (failures - MAX_ATTEMPTS).coerceAtMost(10)
+            Store.put("reset_lock_until", System.currentTimeMillis() + 60_000L * periods)
+        }
+        Store.flushNow()
+    }
+
+    private fun hmacKey(): SecretKey {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (store.getKey(HMAC_ALIAS, null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(HMAC_ALIAS, KeyProperties.PURPOSE_SIGN)
+                .setDigests(KeyProperties.DIGEST_SHA256)
+                .build()
+        )
+        return generator.generateKey()
     }
 
     private fun lockSeconds(): Int =

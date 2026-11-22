@@ -29,10 +29,10 @@ object Http {
 object Ai {
     class Provider(val id: String, val name: String, val kind: String, val base: String, val model: String, val needsBase: Boolean = false)
     val providers = listOf(
-        Provider("gemini", "Gemini", "gemini", "https://generativelanguage.googleapis.com/v1beta", "gemini-flash-latest"),
-        Provider("openai", "ChatGPT (OpenAI)", "openai", "https://api.openai.com/v1", "gpt-4o-mini"),
-        Provider("claude", "Claude (Anthropic)", "anthropic", "https://api.anthropic.com/v1", "claude-sonnet-5-5"),
-        Provider("custom", "Other (OpenAI-compatible)", "openai", "https://openrouter.ai/api/v1", "openrouter/auto", true))
+        Provider("gemini", "Google Gemini", "gemini", "https://generativelanguage.googleapis.com/v1beta", "gemini-flash-latest"),
+        Provider("openai", "OpenAI ChatGPT", "openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+        Provider("claude", "Anthropic Claude", "anthropic", "https://api.anthropic.com/v1", "claude-sonnet-5-5"),
+        Provider("custom", "Custom (OpenAI-compatible)", "openai", "https://openrouter.ai/api/v1", "openrouter/auto", true))
     fun provider(id: String = Store.s("ai_provider", "gemini")): Provider = providers.firstOrNull { it.id == id } ?: providers[0]
     fun key(id: String): String = SecureStore.get("ai:$id")
     fun setKey(id: String, k: String) = SecureStore.put("ai:$id", k.trim())
@@ -154,7 +154,7 @@ object Ai {
 
     // ---------- other AI apps (Xiaomi HyperOS, Gemini app, ChatGPT ...) ----------
     class AiApp(val label: String, val pkg: String)
-    private val known = listOf("Gemini" to "com.google.android.apps.bard", "ChatGPT" to "com.openai.chatgpt", "Claude" to "com.anthropic.claude", "Perplexity" to "ai.perplexity.app.android", "Copilot" to "com.microsoft.copilot", "DeepSeek" to "com.deepseek.chat",
+    private val known = listOf("Google Gemini" to "com.google.android.apps.bard", "OpenAI ChatGPT" to "com.openai.chatgpt", "Anthropic Claude" to "com.anthropic.claude", "Perplexity" to "ai.perplexity.app.android", "Copilot" to "com.microsoft.copilot", "DeepSeek" to "com.deepseek.chat",
         "Xiao AI / HyperOS assistant" to "com.miui.voiceassist", "Xiaomi AI engine" to "com.xiaomi.aicr", "Mi AI vision" to "com.xiaomi.aiasst.vision")
     fun installedAiApps(c: Context): List<AiApp> {
         val pm = c.packageManager; val out = ArrayList<AiApp>()

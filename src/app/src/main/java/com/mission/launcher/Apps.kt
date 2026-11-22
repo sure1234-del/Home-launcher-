@@ -30,6 +30,7 @@ class AppEntry(val label: String, val pkg: String, val cn: ComponentName, val ic
 
 object Apps {
     @Volatile var list: List<AppEntry> = emptyList()
+    var iconCacheClear: (() -> Unit)? = null
     private val main = Handler(Looper.getMainLooper())
     fun hidden(): Set<String> = Store.stringList("hidden_apps").toSet()
     fun study(): Set<String> = Store.stringList("study_apps").toSet()
@@ -79,34 +80,43 @@ object Apps {
 }
 
 object Usage {
-    fun granted(c: Context): Boolean = try { val ao = c.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager; ao.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), c.packageName) == AppOpsManager.MODE_ALLOWED } catch (e: Exception) { false }
-    fun foregroundPackage(c: Context): String? = try {
-        if (!granted(c)) return null
-        val now = System.currentTimeMillis()
-        val manager = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val events = manager.queryEvents((now - 30 * 60 * 1000L).coerceAtLeast(0L), now)
-        val event = android.app.usage.UsageEvents.Event()
-        var latestAt = 0L
-        var latestPackage: String? = null
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            if ((event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED ||
-                    event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) &&
-                event.timeStamp >= latestAt
-            ) {
-                latestAt = event.timeStamp
-                latestPackage = event.packageName
-            }
-        }
-        latestPackage
-    } catch (e: Exception) {
-        Log.e("usage-foreground", e)
-        null
+    fun granted(c: Context): Boolean {
+        return try {
+            val ao = c.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            ao.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), c.packageName) == AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) { false }
     }
-    fun today(c: Context): Map<String, Long> = try {
+    fun foregroundPackage(c: Context): String? {
+        if (!granted(c)) return null
+        try {
+            val now = System.currentTimeMillis()
+            val manager = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val events = manager.queryEvents((now - 30 * 60 * 1000L).coerceAtLeast(0L), now)
+            val event = android.app.usage.UsageEvents.Event()
+            var latestAt = 0L
+            var latestPackage: String? = null
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                if ((event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED ||
+                        event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) &&
+                    event.timeStamp >= latestAt
+                ) {
+                    latestAt = event.timeStamp
+                    latestPackage = event.packageName
+                }
+            }
+            return latestPackage
+        } catch (e: Exception) {
+            Log.e("usage-foreground", e)
+            return null
+        }
+    }
+    fun today(c: Context): Map<String, Long> {
+        return try {
         val um = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val start = Repo.startOf(LocalDate.now(Repo.zone())); um.queryAndAggregateUsageStats(start, System.currentTimeMillis()).mapValues { it.value.totalTimeInForeground }.filter { it.value > 30000 && it.key != c.packageName }
-    } catch (e: Exception) { emptyMap() }
+        } catch (e: Exception) { emptyMap() }
+    }
     fun openSettings(c: Context) { try { c.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { } }
 }
 
@@ -124,10 +134,24 @@ class DrawerView(val a: Activity, val onClose: () -> Unit) : FrameLayout(a) {
         override fun getItemId(p: Int) = p.toLong()
         override fun getView(p: Int, cv: View?, parent: ViewGroup?): View {
             val e = shown[p]
-            val cell = (cv as? LinearLayout) ?: a.vbox().apply { gravity = Gravity.CENTER_HORIZONTAL; padDp(4, 10, 4, 6)
-                addView(ImageView(a).apply { id = 1 }, LinearLayout.LayoutParams(T.dp(Store.i("drawer_icon", 54)), T.dp(Store.i("drawer_icon", 54))))
-                addView(a.text("", 11.5f, 1, T.text, 1).apply { id = 2; gravity = Gravity.CENTER }, lp(-1, -2, 6)) }
-            cell.findViewById<ImageView>(1)!!.setImageDrawable(e.icon); cell.findViewById<TextView>(2)!!.apply { text = e.label; visibility = if (Store.b("drawer_labels", true)) View.VISIBLE else View.GONE }
+            val cell = (cv as? LinearLayout) ?: a.vbox().apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                padDp(4, 10, 4, 6)
+                val icon = ImageView(a).apply { id = View.generateViewId() }
+                val label = a.text("", 11.5f, 1, T.text, 1).apply {
+                    id = View.generateViewId()
+                    gravity = Gravity.CENTER
+                }
+                addView(icon, LinearLayout.LayoutParams(T.dp(Store.i("drawer_icon", 54)), T.dp(Store.i("drawer_icon", 54))))
+                addView(label, lp(-1, -2, 6))
+                tag = listOf(icon, label)
+            }
+            val views = cell.tag as? List<*>
+            (views?.getOrNull(0) as? ImageView)?.setImageDrawable(e.icon)
+            (views?.getOrNull(1) as? TextView)?.apply {
+                text = e.label
+                visibility = if (Store.b("drawer_labels", true)) View.VISIBLE else View.GONE
+            }
             return cell
         }
     }

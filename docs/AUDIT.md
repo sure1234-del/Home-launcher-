@@ -6,11 +6,10 @@ The maintained Android project is in `src/`. `.github/workflows/build.yml` was i
 now selects this tree before the legacy ZIP. The workflow provisions Java 17 and builds the
 debug APK with the Gradle wrapper.
 
-Local Kotlin/Android compilation was attempted with
-`gradle -p src :app:compileDebugKotlin --no-daemon`, but stopped before compilation because no
-Android SDK is installed or configured in this environment. XML parsing of the manifest and
-backup rules succeeds. Do not treat compilation or device behavior as verified until the
-workflow/device checklist passes.
+Local Kotlin/Android compilation was verified with JDK 21 and `ANDROID_HOME=/opt/android-sdk`
+after identifying that the default JDK 25 was unsuitable for this Gradle build. Unit tests and
+the debug APK assembly pass. XML parsing of the manifest and backup rules succeeds. Device,
+emulator, and GitHub Actions behavior remains unverified until their checklists pass.
 
 ## Kotlin and manifest inventory
 
@@ -78,15 +77,25 @@ workflow/device checklist passes.
 | B14 | `Data.kt:271-275`, `SettingsActivity.kt:211-216` | Countdown date could differ between display and settings. | Fixed in code: one stored setting with the same default and display path; user can change it. |
 | B15 | `Data.kt:41-45, 154-180` | PYQ records lacked year breakdown. | Fixed in code: map the Zite Year field and aggregate PYQ counts by year/subject. |
 | B16 | `Data.kt:118-210` | Zite integration is pull-only. | Open: no push queue/retry implementation. |
-| B17 | `Cards.kt:373-382`, `SettingsActivity.kt:130-141` | Sync labels can imply live data when using a snapshot, and status is incomplete. | Open: improve live/cache/stale status and expose last successful sync consistently. |
+| B17 | `Data.kt`, `Cards.kt`, `SettingsActivity.kt` | Sync labels could imply live data when using a snapshot, and status was incomplete. | In code; verify: distinguish live, stale, cached, syncing, error, and snapshot states; show the last successful sync in IST and state that Zite is pull-only. |
 | B18 | `Data.kt:45-48, 147-151` | Display-text subject matching can misclassify CSAT quantitative questions. | Open: normalize using verified stable Zite subject identifiers. |
 | B19 | `Cards.kt:333-346` | Accuracy based on a tiny response sample looked authoritative. | Fixed in code: display subject accuracy only after five responses and label the threshold. |
-| B20/B21/B22 | `MainActivity.kt`, `Apps.kt` | Dock/page spacing, left-edge handle, and drawer density may obstruct content or be hard to tune. | Open: measure and verify on the Redmi Pad SE; no device result is available. |
-| B23 | `Wallpaper.kt:91-103` | Moon is rendered as a fixed cut disc and stars have limited variation. | Open: computed lunar phase and richer star field remain. |
+| B20 | `MainActivity.kt` | Dock/page spacing and card bottom padding may obstruct content. | Open: measure and verify insets/spacing on the Redmi Pad SE; no device result is available. |
+| B21 | `MainActivity.kt`, `SettingsActivity.kt` | The app drawer needed an optional edge affordance without taking over system navigation. | In code; verify: added a default-off, auto-hiding drawer handle with a narrow 8 dp hidden tap strip; it uses no overlay permission or gesture-exclusion zone. System-back and Redmi Pad behavior still need device testing. |
+| B22 | `MainActivity.kt`, `Apps.kt`, `SettingsActivity.kt` | App-grid density and icon sizing were hard to tune; pinned icons/widgets had fixed sizes. | In code; verify: drawer columns, drawer/pinned icon sizes, system-widget height, reduced font/UI scales, and chart height are configurable. AppWidgetProviderInfo pixel limits are converted to dp; host dimensions ignore launcher UI scaling; resize is offered only for vertically resizable providers and existing widget options are preserved. |
+| B23 | `Wallpaper.kt` | Moon phase was not computed and stars had limited variation. | In code; verify: date-based lunar phase, crescent orientation, and deterministic star variation. |
+| B27 | `Wallpaper.kt`, `Platform.kt`, manifest | Wallpaper interval settings were checked only by the hourly maintenance alarm. | In code; verify: a dedicated configurable wallpaper alarm is restored on boot and kept separate from network/backup work. Android may defer it. |
+| B28 | `Water.kt`, `Platform.kt` | Floating reminders could be skipped when one delivery channel or permission was unavailable, and stale nags could revive cleared cards. | In code; verify: use the available notification/overlay path, validate scheduled nag times, and invalidate pending cards on clear/snooze. Device permission flows remain untested. |
 | B24 | `Timer.kt:151-161` | Timer notification icon was water-themed. | Fixed in code: use an alarm/timer system icon and colour by timer state. |
-| B25 | `Ai.kt`, `SettingsActivity.kt` | AI provider labels may be inconsistent. | Open: audit all provider labels and consolidate the setting. |
+| B25 | `Ai.kt`, `SettingsActivity.kt`, `ChatActivity.kt` | AI provider labels were inconsistent across settings and chat. | In code; verify: use Google Gemini, OpenAI ChatGPT, Anthropic Claude, and Custom (OpenAI-compatible) consistently; stored provider IDs and request behavior are unchanged. |
 | B26 | `ResetGate.kt`, `SecureStore.kt`, backup XML | Credentials/reset password must never be embedded or backed up in plaintext. | Fixed in code: reset password is user-set and PBKDF2-hashed; provider keys use Android Keystore AES-GCM; config and encrypted secrets are excluded from Android backup. Validate migration and exports on device. |
-| AUD-02 | Build environment; no source line | Local build stops before compilation because Android SDK is unavailable. | Open validation limitation: run CI build with Java 17/SDK and device tests. |
+| AUD-02 | Build environment; no source line | The default Java 25 runtime and unset SDK environment initially blocked local validation. | Resolved locally with JDK 21 and Android SDK 35; unit tests and debug APK pass. Keep CI and device tests open. |
+| UX-01 | `MainActivity.kt` | New installs automatically populated all home pages with cards. | In code; verify: new default pages are empty; saved layouts remain unchanged, and users can add/remove cards themselves. |
+| UX-02 | `Cards.kt`, `Timer.kt`, `Data.kt` | The selected next topic could not be edited or linked to a timer session. | In code; verify: choose a Zite Prelims topic, start a subject/topic-tagged session, and retain it in history and CSV export. |
+| UX-03 | `Theme.kt`, `UI.kt`, `Cards.kt`, `SettingsActivity.kt` | Secondary labels and muted accent text fell below WCAG AA contrast on light surfaces. | In code; verify: secondary text now measures 4.53:1 on the light page and 5.10:1 on white cards; colored text accents are adjusted to at least 4.5:1 on light and dark surfaces; filled pills and chat bubbles select a contrasting foreground. Recheck on-device rendering. |
+| B29 | `MainActivity.kt` | Android widget picker IDs could leak on launch/cancel, be lost during Activity recreation, or leave saved placements invisible when their provider disappears. | In code; verify: save the pending ID across recreation, release it on cancellation/bind failure, avoid duplicate placement, and show a recoverable placeholder without deleting the user's saved placement. A configuration-launch failure adds the provider's default layout instead of orphaning the ID. |
+| UX-04 | `WidgetCatalogDialog.kt`, `MainActivity.kt` | A growing widget list would be difficult to navigate, and selecting a card should never silently add other cards. | In code; verify: searchable title/subtitle picker, clear no-results state, selection closes the dialog and adds only the chosen item; there are still 21 custom cards, not 50+. |
+| WX-01 | `Weather.kt`, `Wallpaper.kt`, `SettingsActivity.kt` | Procedural scenes did not use fetched local weather, and stale data could be mistaken for current conditions. | In code; verify: Open-Meteo conditions for a selectable fixed city (Prayagraj default) are cached, refreshes are bounded, status and attribution are shown, and weather effects are skipped when data is stale. Current conditions are 15-minute model data, not sensor-live. Network, visual, and device behavior remain unverified. |
 
 This audit records source-level fixes, not proof of runtime behavior. Outstanding work is tracked in
 [`BACKLOG.md`](./BACKLOG.md); Android/HyperOS limitations are in [`LIMITS.md`](./LIMITS.md).

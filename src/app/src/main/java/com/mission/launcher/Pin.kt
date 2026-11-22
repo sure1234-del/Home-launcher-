@@ -32,7 +32,7 @@ object Pin {
 class PinPad(c: Context, val title: String, val length: Int, val allowCancel: Boolean, val onEntered: (String, PinPad) -> Unit, val onCancel: () -> Unit, val onBio: (() -> Unit)? = null) : FrameLayout(c) {
     private var buf = ""
     private val dots = LinearLayout(c)
-    private val msg = c.text("", 13f, 1, T.danger)
+    private val msg = c.text("", 13f, 1, T.textAccent(T.danger))
     private val head = c.text(title, 20f, 3)
     init {
         setBackgroundColor(T.page); isClickable = true; isFocusable = true

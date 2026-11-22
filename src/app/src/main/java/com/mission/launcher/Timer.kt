@@ -35,6 +35,7 @@ object TimerState {
     fun mode() = Store.s("timer_mode", "stopwatch")          // stopwatch | pomo
     fun phase() = Store.s("timer_phase", "work")             // work | break
     fun subject() = Store.s("timer_subject", "General")
+    fun topic() = Store.s("timer_topic")
     fun workMin() = Store.i("pomo_work", 25)
     fun breakMin() = Store.i("pomo_break", 5)
     /** accumulated ms of the current phase including the running segment */
@@ -47,8 +48,9 @@ object TimerState {
         return Store.l("timer_acc") + (end - segment).coerceAtLeast(0L)
     }
     fun active() = Store.b("timer_active")
-    fun start(subject: String? = null, mode: String? = null) {
+    fun start(subject: String? = null, mode: String? = null, topic: String? = null) {
         if (subject != null) Store.put("timer_subject", subject); if (mode != null) Store.put("timer_mode", mode)
+        Store.put("timer_topic", topic.orEmpty())
         val now = System.currentTimeMillis()
         Store.put("timer_active", true); Store.put("timer_phase", "work"); Store.put("timer_acc", 0L); Store.put("timer_seg", now); Store.put("timer_heartbeat", now); Store.put("timer_running", true)
         Store.put("timer_session_start", now); Store.put("timer_session_ms", 0L); Store.put("timer_auto_paused", false); Store.put("pomo_done", 0)
@@ -84,12 +86,14 @@ object TimerState {
                 "mins" to minutes,
                 "duration_ms" to totalMs,
                 "subject" to subject(),
+                "topic" to topic(),
                 "kind" to mode()
             ))
         }
         Store.put("timer_active", false); Store.put("timer_running", false); Store.put("timer_acc", 0L)
         Store.put("timer_seg", 0L); Store.put("timer_heartbeat", 0L); Store.put("timer_session_ms", 0L)
         Store.put("timer_session_start", 0L); Store.put("timer_phase", "work"); Store.put("timer_auto_paused", false)
+        Store.put("timer_topic", "")
         return TimerFinishResult(true, shouldSave, if (shouldSave) minutes else 0)
     }
 }
@@ -113,6 +117,11 @@ class TimerService : Service() {
 
     override fun onBind(i: Intent?): IBinder? = null
     override fun onCreate() { super.onCreate(); Boot.ensure(this); TimerState.recoverAfterRestart() }
+    override fun onTimeout(startId: Int) {
+        super.onTimeout(startId)
+        TimerState.heartbeat()
+        shutdown()
+    }
 
     override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
         return try {
@@ -152,6 +161,7 @@ class TimerService : Service() {
         val (ms, cd) = shownMs()
         val open = PendingIntent.getActivity(this, 9, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
         fun a(code: Int, act: String) = PendingIntent.getService(this, code, Intent(this, TimerService::class.java).setAction(act), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val topic = TimerState.topic().takeIf { it.isNotBlank() }?.let { " - $it" }.orEmpty()
         val icon = android.R.drawable.ic_lock_idle_alarm
         val color = when {
             !TimerState.running() -> T.text3
@@ -159,7 +169,7 @@ class TimerService : Service() {
             else -> T.amber
         }
         return Notification.Builder(this, CH_TIMER).setSmallIcon(icon).setColor(color).setOngoing(true).setContentIntent(open)
-            .setContentTitle((if (TimerState.phase() == "work") "Studying: " else "Break: ") + TimerState.subject())
+            .setContentTitle((if (TimerState.phase() == "work") "Studying: " else "Break: ") + TimerState.subject() + topic)
             .setContentText(fmt(ms, cd) + (if (TimerState.running()) "" else "  (paused)")).setCategory(Notification.CATEGORY_SERVICE).setOnlyAlertOnce(true)
             .addAction(Notification.Action.Builder(Icon.createWithResource(this, icon), if (TimerState.running()) "Pause" else "Resume", a(1, ACT_TOGGLE)).build())
             .addAction(Notification.Action.Builder(Icon.createWithResource(this, icon), "Stop and save", a(2, ACT_STOP)).build()).build()
@@ -215,7 +225,7 @@ class TimerService : Service() {
         val top = c.hbox()
         val d = View(c); dot = d; top.addView(d, LinearLayout.LayoutParams(T.dp(8), T.dp(8)))
         val tv = c.text("00:00", 15f, 3, 0xFFF3F0EB.toInt()).tabular(); timeV = tv; top.addView(tv, lpm(-2, -2, 8, 0, 0, 0))
-        top.addView(c.text(TimerState.subject(), 11f, 1, 0xFFB9B3AA.toInt(), 1), lpm(-2, -2, 8, 0, 0, 0))
+        top.addView(c.text(TimerState.subject() + TimerState.topic().takeIf { it.isNotBlank() }?.let { " - $it" }.orEmpty(), 11f, 1, 0xFFB9B3AA.toInt(), 1), lpm(-2, -2, 8, 0, 0, 0))
         root.addView(top)
         val pn = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; padDp(0, 8, 0, 0) }
         fun b(ic: String, lbl: String, f: () -> Unit): View = c.hbox().apply { background = T.round(0x22FFFFFF, 12); padDp(10, 7, 12, 7); addView(c.icon(ic, 0xFFF3F0EB.toInt(), 14, 2f)); addView(c.text(" $lbl", 11.5f, 2, 0xFFF3F0EB.toInt())); setOnClickListener { f() } }

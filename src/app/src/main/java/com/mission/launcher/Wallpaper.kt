@@ -2,6 +2,7 @@ package com.mission.launcher
 
 import android.app.WallpaperManager
 import android.content.Context
+import android.content.Intent
 import android.content.res.Resources
 import android.graphics.*
 import android.net.Uri
@@ -53,7 +54,7 @@ object Scenes {
         return Color.argb(255, min(255, (Color.red(c) * (1f + k * 0.35f)).toInt()), (Color.green(c) * (1f - k * 0.05f)).toInt(), (Color.blue(c) * (1f - k)).toInt())
     }
 
-    fun render(w: Int, h: Int, hour: Float, scene: String, month: Int, o: WOpts, dayKey: Int = 0): Bitmap {
+    fun render(w: Int, h: Int, hour: Float, scene: String, month: Int, o: WOpts, dayKey: Int = 0, date: LocalDate = TimeProvider.today(), weather: WeatherSnapshot? = null): Bitmap {
         val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); val cv = Canvas(bm)
         val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
         val (top, hz) = sky(hour); val L = daylight(hour)
@@ -66,7 +67,7 @@ object Scenes {
             else -> {
                 p.shader = LinearGradient(0f, 0f, 0f, horizon, comfort(top, hour, o.comfort), comfort(hz, hour, o.comfort), Shader.TileMode.CLAMP)
                 cv.drawRect(0f, 0f, w.toFloat(), horizon + 2, p); p.shader = null
-                celestial(cv, p, w, h, horizon, hour, L, hz)
+                celestial(cv, p, w, h, horizon, hour, L, hz, lunarPhase(date))
                 clouds(cv, p, w, h, horizon, hour, L, hz, dayKey, if (o.season && month in 6..9) 1.6f else 1f)
                 when (scene) {
                     "hills" -> ridges(cv, p, w, h, horizon, hz, L, dayKey, 5, 0xFF8995A8.toInt(), 0xFF40504A.toInt(), 0.2f)
@@ -82,6 +83,7 @@ object Scenes {
             (month == 12 || month <= 2) && scene != "amoled" -> { p.shader = LinearGradient(0f, h * 0.55f, 0f, h.toFloat(), 0x00E6ECF2, 0x66E6ECF2, Shader.TileMode.CLAMP); cv.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), p); p.shader = null }
             month in 3..5 && L > 0.2f -> { p.color = 0xFFFF9A3C.toInt(); p.alpha = (26 * L).toInt(); cv.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p) }
         }
+        weather?.let { weatherEffects(cv, p, w, h, it) }
         finish(bm, o)
         return bm
     }
@@ -95,16 +97,99 @@ object Scenes {
 
     private fun glow(cv: Canvas, p: Paint, x: Float, y: Float, r: Float, col: Int, a: Float) { p.shader = RadialGradient(x, y, r, intArrayOf(T.withAlpha(col, a), T.withAlpha(col, 0f)), null, Shader.TileMode.CLAMP); cv.drawCircle(x, y, r, p); p.shader = null }
 
-    private fun celestial(cv: Canvas, p: Paint, w: Int, h: Int, horizon: Float, hour: Float, L: Float, hz: Int) {
+    private fun lunarPhase(date: LocalDate): Float {
+        return MoonMath.phase(date).toFloat()
+    }
+    private fun weatherEffects(cv: Canvas, p: Paint, w: Int, h: Int, weather: WeatherSnapshot) {
+        when (weather.code) {
+            45, 48 -> {
+                p.shader = LinearGradient(0f, 0f, 0f, h.toFloat(),
+                    intArrayOf(0x24D8DFE4, 0x42D8DFE4, 0x18D8DFE4),
+                    floatArrayOf(0f, 0.52f, 1f), Shader.TileMode.CLAMP)
+                cv.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
+                p.shader = null
+            }
+            3 -> {
+                p.color = 0xFF667181.toInt(); p.alpha = 28
+                cv.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p); p.alpha = 255
+            }
+            in 51..67, in 80..82, in 95..99 -> {
+                val seed = (weather.fetchedAt / (30 * 60 * 1000L)).toInt()
+                val random = java.util.Random(seed.toLong())
+                val count = (w * h / 4200).coerceIn(80, 900)
+                p.color = if (weather.code >= 95) 0xFFB7C7D9.toInt() else 0xFFDAE8F4.toInt()
+                p.strokeWidth = max(1f, w / 900f)
+                p.alpha = if (weather.code >= 95) 105 else 82
+                for (i in 0 until count) {
+                    val x = random.nextFloat() * w
+                    val y = random.nextFloat() * h
+                    val length = h * (0.008f + random.nextFloat() * 0.014f)
+                    cv.drawLine(x, y, x - length * 0.2f, y + length, p)
+                }
+                p.alpha = 255
+            }
+            in 71..77, 85, 86 -> {
+                val random = java.util.Random((weather.fetchedAt / (30 * 60 * 1000L)).toInt().toLong())
+                val count = (w * h / 7000).coerceIn(60, 700)
+                p.color = 0xFFEAF1F6.toInt()
+                for (i in 0 until count) {
+                    val radius = max(1f, w / 1100f) * (0.7f + random.nextFloat() * 1.4f)
+                    p.alpha = 90 + random.nextInt(120)
+                    cv.drawCircle(random.nextFloat() * w, random.nextFloat() * h, radius, p)
+                }
+                p.alpha = 255
+            }
+        }
+    }
+    private fun lunarIllumination(phase: Float): Float = (1f - kotlin.math.cos(phase * 2f * PI).toFloat()) * 0.5f
+    private fun celestial(cv: Canvas, p: Paint, w: Int, h: Int, horizon: Float, hour: Float, L: Float, hz: Int, phase: Float) {
         if (L < 0.95f) { // stars
             val r = java.util.Random(5); val a = ((1f - L) * 220).toInt()
-            p.color = Color.WHITE; for (i in 0 until 110) { val x = r.nextFloat() * w; val y = r.nextFloat() * horizon * 0.85f; val s = 0.7f + r.nextFloat() * 1.6f; p.alpha = (a * (0.35f + r.nextFloat() * 0.65f)).toInt(); cv.drawCircle(x, y, s, p) }; p.alpha = 255
+            for (i in 0 until 110) {
+                val x = r.nextFloat() * w; val y = r.nextFloat() * horizon * 0.85f
+                val bright = r.nextFloat(); val s = if (bright > 0.92f) 1.4f + r.nextFloat() * 0.8f else 0.45f + r.nextFloat() * 1.1f
+                p.color = if (bright > 0.92f) 0xFFFFF3D6.toInt() else Color.WHITE
+                p.alpha = (a * (0.25f + bright * 0.75f)).toInt(); cv.drawCircle(x, y, s, p)
+            }
+            p.alpha = 255
         }
         val day = hour in 5.8f..18.4f
         val t = if (day) (hour - 5.8f) / 12.6f else (((hour - 18.4f + 24f) % 24f) / 11.4f)
         val x = w * (0.1f + 0.8f * t.coerceIn(0f, 1f)); val y = horizon - sin(PI.toFloat() * t.coerceIn(0f, 1f)) * horizon * 0.78f
         if (day) { glow(cv, p, x, y, h * 0.3f, 0xFFFFE6B0.toInt(), 0.55f * (0.4f + L * 0.6f)); p.color = 0xFFFFF4D0.toInt(); cv.drawCircle(x, y, h * 0.045f, p) }
-        else { glow(cv, p, x, y, h * 0.2f, 0xFFDDE6FF.toInt(), 0.28f); p.color = 0xFFF1EBD8.toInt(); cv.drawCircle(x, y, h * 0.04f, p); p.color = lc(0xFF1A2138.toInt(), hz, 0.2f); cv.drawCircle(x + h * 0.016f, y - h * 0.008f, h * 0.036f, p) }
+        else {
+            val radius = h * 0.04f
+            val illumination = lunarIllumination(phase)
+            if (illumination > 0.02f) glow(cv, p, x, y, h * 0.2f, 0xFFDDE6FF.toInt(), 0.24f * illumination)
+            val disk = Path().apply { addCircle(x, y, radius, Path.Direction.CW) }
+            cv.save(); cv.clipPath(disk)
+            p.color = 0xFF353D4F.toInt(); cv.drawCircle(x, y, radius, p)
+            val light = when {
+                illumination <= 0.0001f -> null
+                illumination >= 0.9999f -> Path().apply { addCircle(x, y, radius, Path.Direction.CW) }
+                else -> {
+                    val waxing = phase < 0.5f
+                    val terminatorSide = if ((waxing && phase <= 0.25f) || (!waxing && phase <= 0.75f)) -1f else 1f
+                    val terminatorRadius = abs(kotlin.math.cos(phase * 2f * PI).toFloat()) * radius
+                    Path().apply {
+                        moveTo(x, y - radius)
+                        arcTo(RectF(x - radius, y - radius, x + radius, y + radius), -90f, if (waxing) 180f else -180f)
+                        if (terminatorRadius < radius * 0.01f) {
+                            lineTo(x, y - radius)
+                        } else {
+                            val terminator = RectF(x - terminatorRadius, y - radius, x + terminatorRadius, y + radius)
+                            arcTo(terminator, 90f, 180f * terminatorSide)
+                        }
+                        close()
+                    }
+                }
+            }
+            if (light != null) {
+                p.shader = LinearGradient(x - radius, y - radius, x + radius, y + radius, 0xFFF6F2E6.toInt(), 0xFFD8D9D4.toInt(), Shader.TileMode.CLAMP)
+                cv.drawPath(light, p); p.shader = null
+            }
+            cv.restore()
+        }
     }
     private fun clouds(cv: Canvas, p: Paint, w: Int, h: Int, horizon: Float, hour: Float, L: Float, hz: Int, seed: Int, density: Float) {
         val r = java.util.Random(seed.toLong() + 3); val n = (6 * density).toInt()
@@ -168,12 +253,38 @@ object Wallpaper {
     fun opts() = WOpts(Store.b("wp_grain", true), Store.b("wp_comfort", true), Store.b("wp_season", true), Store.i("wp_dim", 6) / 100f)
     fun hourNow(): Float { val n = LocalTime.now(Repo.zone()); return n.hour + n.minute / 60f }
     fun photos(c: Context): List<File> = File(c.filesDir, "wp").listFiles()?.filter { it.extension == "jpg" }?.sortedBy { it.name } ?: emptyList()
+    fun scheduleNext(c: Context) {
+        if (!enabled()) { Sched.cancelWallpaper(c); Store.put("wp_next", 0L); return }
+        val at = TimeProvider.nextHalfHour(System.currentTimeMillis())
+        Store.put("wp_next", at)
+        Sched.wallpaper(c, at)
+    }
+
+    fun liveActive(c: Context): Boolean = try {
+        WallpaperManager.getInstance(c).getWallpaperInfo()?.packageName == c.packageName
+    } catch (_: Exception) { false }
+
+    fun launchLiveWallpaper(c: Context): Boolean {
+        return try {
+            val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+                putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                    android.content.ComponentName(c, MissionWallpaperService::class.java))
+            }
+            c.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            try {
+                c.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER))
+                true
+            } catch (_: Exception) { false }
+        }
+    }
 
     fun build(c: Context, w: Int, h: Int, forLock: Boolean = false): Bitmap {
-        val now = LocalDate.now(Repo.zone())
+        val now = TimeProvider.today()
         val sc = scene(); val o = opts(); val pw = if (Store.b("wp_parallax", true)) (w * 1.2f).toInt() else w
-        val bm: Bitmap = if (sc == "photo") { photoBitmap(c, pw, h, o) ?: Scenes.render(pw, h, hourNow(), "hills", now.monthValue, o, now.dayOfYear) }
-        else Scenes.render(pw, h, if (Store.b("wp_auto", true)) hourNow() else Store.i("wp_fixed_hour", 12).toFloat(), sc, now.monthValue, o, now.dayOfYear)
+        val bm: Bitmap = if (sc == "photo") { photoBitmap(c, pw, h, o) ?: Scenes.render(pw, h, hourNow(), "hills", now.monthValue, o, now.dayOfYear, now) }
+        else Scenes.render(pw, h, if (Store.b("wp_auto", true)) hourNow() else Store.i("wp_fixed_hour", 12).toFloat(), sc, now.monthValue, o, now.dayOfYear, now, Weather.forRendering())
         if (forLock && Store.b("wp_lock_text", true)) {
             val cv = Canvas(bm); val p = Paint(Paint.ANTI_ALIAS_FLAG); p.typeface = T.font(2); p.textAlign = Paint.Align.CENTER
             val days = java.time.temporal.ChronoUnit.DAYS.between(now, Repo.examDate())
@@ -183,7 +294,7 @@ object Wallpaper {
     }
     private fun photoBitmap(c: Context, w: Int, h: Int, o: WOpts): Bitmap? {
         val list = photos(c); if (list.isEmpty()) return null
-        val date = LocalDate.now(Repo.zone())
+        val date = TimeProvider.today()
         val idx = when (Store.s("wp_photo_mode", "daily")) { "hourly" -> (date.dayOfYear * 24 + LocalTime.now(Repo.zone()).hour) % list.size; "single" -> 0; else -> date.dayOfYear % list.size }
         val src = try { BitmapFactory.decodeFile(list[idx].path) } catch (e: Throwable) { null } ?: return null
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); val cv = Canvas(out); val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -199,24 +310,29 @@ object Wallpaper {
         Scenes.finish(out, WOpts(o.grain, false, false, max(o.dim, 0.18f)))
         return out
     }
-    fun apply(c: Context, force: Boolean = false): Boolean {
+    fun apply(c: Context, force: Boolean = false, refreshWeather: Boolean = true): Boolean {
         try {
+            if (liveActive(c)) {
+                Store.put("wp_last", System.currentTimeMillis())
+                if (refreshWeather) Weather.refreshIfNeeded(c)
+                scheduleNext(c)
+                return true
+            }
             if (!force) {
                 if (!enabled()) return false
-                if (Store.b("wp_pause_focus", true) && (Focus.active() || TimerState.running())) return false
                 if (Store.b("wp_battery_pause", true) && (c.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode) return false
             }
+            if (refreshWeather) Weather.refreshIfNeeded(c)
             val d = dims(c); val wm = WallpaperManager.getInstance(c); val tgt = Store.s("wp_target", "both")
             if (tgt == "both" || tgt == "home") { val b = build(c, d[0], d[1]); wm.setBitmap(b, null, true, WallpaperManager.FLAG_SYSTEM); b.recycle() }
             if (tgt == "both" || tgt == "lock") { val b = build(c, d[0], d[1], true); wm.setBitmap(b, null, true, WallpaperManager.FLAG_LOCK); b.recycle() }
-            Store.put("wp_last", System.currentTimeMillis()); return true
+            Store.put("wp_last", System.currentTimeMillis()); scheduleNext(c); return true
         } catch (e: Throwable) { Log.e("wallpaper", e); return false }
     }
-    /** Called every hour; renders only when the chosen interval has passed so changes stay gentle. */
+    /** Static fallback: runs at every IST half-hour boundary. */
     fun hourly(c: Context) {
         if (!enabled() || Store.s("wp_scene") == "photo" && photos(c).isEmpty()) { if (!enabled()) return }
-        val every = Store.i("wp_interval", 30).coerceIn(15, 240)
-        if (System.currentTimeMillis() - Store.l("wp_last", 0) >= (every - 1) * 60000L) apply(c)
+        apply(c)
     }
     fun preview(c: Context, w: Int, h: Int): Bitmap = build(c, w, h)
     fun addPhoto(c: Context, uri: Uri): Boolean {

@@ -61,7 +61,7 @@ object Cards {
         }
     } catch (e: Throwable) { Log.e("card-$id", e); errorCard(h.act, id, e) }
 
-    private fun errorCard(c: Context, id: String, e: Throwable): View = Card(c).apply { addView(c.text("Card '$id' could not load", 13f, 2, T.danger)); addView(c.text(e.javaClass.simpleName + ": " + (e.message ?: ""), 11f, 0, T.text3), lp(-2, -2, 4)) }
+    private fun errorCard(c: Context, id: String, e: Throwable): View = Card(c).apply { addView(c.text("Card '$id' could not load", 13f, 2, T.textAccent(T.danger))); addView(c.text(e.javaClass.simpleName + ": " + (e.message ?: ""), 11f, 0, T.text3), lp(-2, -2, 4)) }
 
     private fun greeting(): String { val h = LocalTime.now(Repo.zone()).hour; return when { h < 5 -> "Late night"; h < 12 -> "Good morning"; h < 17 -> "Good afternoon"; h < 21 -> "Good evening"; else -> "Wind down" } }
     private fun pct(f: Float) = "${(f * 100).toInt()}%"
@@ -109,7 +109,7 @@ object Cards {
         fun row(u: Up): View = c.hbox().apply { padDp(0, 9, 0, 9)
             addView(View(c).apply { background = T.round(u.color, 5) }, LinearLayout.LayoutParams(T.dp(8), T.dp(8)))
             val col = c.vbox(); col.addView(c.text(u.title, 13.5f, 2, T.text, 1)); if (u.sub.isNotBlank()) col.addView(c.text(u.sub, 11.5f, 0, T.text3, 1), lp(-2, -2, 1))
-            addView(col, lpm(0, -2, 12, 0, 8, 0, 1f)); addView(c.text(Upcoming.label(u.date).substringBefore(" - ") + if (u.time.isNotBlank()) " ${u.time}" else "", 11.5f, 1, if (u.date == LocalDate.now(Repo.zone())) T.terra else T.text2)) }
+            addView(col, lpm(0, -2, 12, 0, 8, 0, 1f)); addView(c.text(Upcoming.label(u.date).substringBefore(" - ") + if (u.time.isNotBlank()) " ${u.time}" else "", 11.5f, 1, if (u.date == LocalDate.now(Repo.zone())) T.textAccent(T.terra) else T.text2)) }
         items.take(4).forEachIndexed { i, u -> card.addView(row(u), lp(-1, -2, if (i == 0) 6 else 0)) }
         if (items.size > 4) card.addView(Collapsible(c, "${items.size - 4} more", "", false, "up_more") { items.drop(4).forEach { addView(row(it)) } })
         return card
@@ -138,10 +138,10 @@ object Cards {
     // ---------------- water ----------------
     private fun water(h: Host): View {
         val c = h.act; val card = Card(c); val have = Repo.waterToday(); val goal = Water.goal()
-        card.addView(c.cardHeader("drop", "Water", T.teal, c.text(if (Water.pending()) "reminder active" else "streak ${Water.streak()}d", 11.5f, 2, if (Water.pending()) T.terra else T.text3)))
+        card.addView(c.cardHeader("drop", "Water", T.teal, c.text(if (Water.pending()) "reminder active" else "streak ${Water.streak()}d", 11.5f, 2, if (Water.pending()) T.textAccent(T.terra) else T.text3)))
         val top = c.hbox(); top.addView(Ring(c, have.toFloat() / goal, T.teal, "${have * 100 / goal}%", "$have ml"), LinearLayout.LayoutParams(T.dp(112), T.dp(112)))
         val side = c.vbox(); side.addView(c.text("$have / $goal ml", 18f, 3).tabular())
-        val b = Water.behind(); side.addView(c.text(if (have >= goal) "Goal reached today" else if (b > 0) "$b ml behind pace" else "On pace", 12.5f, 1, if (b > 0 && have < goal) T.terra else T.sage), lp(-2, -2, 3))
+        val b = Water.behind(); side.addView(c.text(if (have >= goal) "Goal reached today" else if (b > 0) "$b ml behind pace" else "On pace", 12.5f, 1, T.textAccent(if (b > 0 && have < goal) T.terra else T.sage)), lp(-2, -2, 3))
         side.addView(c.text("Reminders %02d:%02d - %02d:%02d IST, every %d min".format(Water.startTime().hour, Water.startTime().minute, Water.endTime().hour, Water.endTime().minute, Water.interval()), 11.5f, 0, T.text3), lp(-2, -2, 3))
         top.addView(side, lpm(0, -2, 16, 0, 0, 0, 1f)); card.addView(top, lp(-1, -2, 10))
         val cups = Water.cups()
@@ -163,14 +163,14 @@ object Cards {
         val now = LocalTime.now(Repo.zone()).let { "%02d:%02d".format(it.hour, it.minute) }
         fun slot(s: JSONObject, hl: Boolean): View = c.hbox().apply { padDp(0, 8, 0, 8)
             val on = hl && now >= s.optString("start") && now < s.optString("end")
-            addView(c.text(s.optString("start") + "\n" + s.optString("end"), 11f, 1, if (on) T.sage else T.text3).tabular(), LinearLayout.LayoutParams(T.dp(44), -2))
+            addView(c.text(s.optString("start") + "\n" + s.optString("end"), 11f, 1, if (on) T.textAccent(T.sage) else T.text3).tabular(), LinearLayout.LayoutParams(T.dp(44), -2))
             addView(View(c).apply { background = T.round(T.subjectColor(s.optString("subject", s.optString("title"))), 3) }, LinearLayout.LayoutParams(T.dp(4), T.dp(30)))
             val col = c.vbox(); col.addView(c.text(s.optString("title"), 14f, 2, T.text, 1)); if (s.optString("subject").isNotBlank()) col.addView(c.text(s.optString("subject"), 11.5f, 0, T.text3), lp(-2, -2, 1))
-            addView(col, lpm(0, -2, 12, 0, 0, 0, 1f)); if (on) addView(c.text("now", 11f, 3, T.sage)) }
+            addView(col, lpm(0, -2, 12, 0, 0, 0, 1f)); if (on) addView(c.text("now", 11f, 3, T.textAccent(T.sage))) }
         val t = Repo.scheduleFor(today)
         if (t.isEmpty()) { card.addView(c.emptyNote("No blocks today."), lp(-2, -2, 4)); card.addView(c.pill("Use a balanced template", "sparkle", false) { template(c) }, lp(-2, -2, 6)) }
         t.forEachIndexed { i, s -> card.addView(slot(s, true), lp(-1, -2, if (i == 0) 6 else 0)) }
-        card.addView(Collapsible(c, "Full week", "", false, "week_full") { for (d in 1..7) { addView(c.text(java.time.DayOfWeek.of(d).getDisplayName(TextStyle.FULL, Locale.ENGLISH), 12f, 3, if (d == today) T.sage else T.text2), lp(-2, -2, 8)); val l = Repo.scheduleFor(d); if (l.isEmpty()) addView(c.emptyNote("free")) else l.forEach { addView(slot(it, false)) } } })
+        card.addView(Collapsible(c, "Full week", "", false, "week_full") { for (d in 1..7) { addView(c.text(java.time.DayOfWeek.of(d).getDisplayName(TextStyle.FULL, Locale.ENGLISH), 12f, 3, if (d == today) T.textAccent(T.sage) else T.text2), lp(-2, -2, 8)); val l = Repo.scheduleFor(d); if (l.isEmpty()) addView(c.emptyNote("free")) else l.forEach { addView(slot(it, false)) } } })
         return card
     }
     fun template(c: Activity) {
@@ -213,11 +213,11 @@ object Cards {
     // ---------------- focus + goal ----------------
     private fun focus(h: Host): View {
         val c = h.act; val card = Card(c); val goalMin = Store.i("study_goal_min", 360); val done = Repo.minutesOn(LocalDate.now(Repo.zone())) + (if (TimerState.active()) (TimerState.phaseMs() / 60000).toInt() else 0)
-        card.addView(c.cardHeader("bolt", "Focus", T.gold, c.text(if (Focus.active()) "locked" else "", 11.5f, 3, T.terra)))
+        card.addView(c.cardHeader("bolt", "Focus", T.gold, c.text(if (Focus.active()) "locked" else "", 11.5f, 3, T.textAccent(T.terra))))
         val top = c.hbox(); top.addView(Ring(c, done.toFloat() / goalMin, T.gold, fmtMins(done), "of ${fmtMins(goalMin)}").apply { tap { Dlg.input(c, "Daily study goal (minutes)", "e.g. 420", goalMin.toString(), true) { v -> v.toIntOrNull()?.let { Store.put("study_goal_min", it.coerceIn(30, 1000)); h.refresh() } } } }, LinearLayout.LayoutParams(T.dp(100), T.dp(100)))
         val col = c.vbox(); col.addView(c.statBlock("${Repo.streak()} days", "study streak", T.text)); col.addView(c.statBlock(fmtMins(Repo.weekMinutes()), "this week", T.text), lp(-2, -2, 10))
         top.addView(col, lpm(0, -2, 18, 0, 0, 0, 1f)); card.addView(top, lp(-1, -2, 10))
-        if (Focus.active()) { val t = c.text("", 20f, 3, T.terra).tabular(); card.addView(t, lp(-2, -2, 10)); card.addView(c.text("Apps are locked until the session ends. Water and calls still work.", 11.5f, 0, T.text3), lp(-2, -2, 4)); card.whileAttached(1000) { val s = Focus.left(); t.text = "%d:%02d left".format(s / 60, s % 60); if (s == 0L) h.refresh() } }
+        if (Focus.active()) { val t = c.text("", 20f, 3, T.textAccent(T.terra)).tabular(); card.addView(t, lp(-2, -2, 10)); card.addView(c.text("Apps are locked until the session ends. Water and calls still work.", 11.5f, 0, T.text3), lp(-2, -2, 4)); card.whileAttached(1000) { val s = Focus.left(); t.text = "%d:%02d left".format(s / 60, s % 60); if (s == 0L) h.refresh() } }
         else { val r = c.hbox(); listOf(25, 50, 90).forEach { m -> r.addView(c.pill("$m min", "bolt", m == 50, T.gold) { Dlg.confirm(c, "Start $m min focus?", "The app drawer stays locked and distractions are muted. You cannot cancel early.", "Start") { Focus.start(c, m, TimerState.subject()); h.refresh() } }, lpm(-2, -2, 0, 0, 8, 0)) }; card.addView(c.chipRow(r), lp(-1, -2, 12)) }
         return card
     }
@@ -229,7 +229,7 @@ object Cards {
         val subjects = (Zite.data(c).syl.map { Syl.short(it.name) } + listOf("Philosophy", "Mains writing", "Current Affairs", "Revision", "General")).distinct()
         var subj = TimerState.subject()
         val state = c.text("", 26f, 3).tabular()
-        card.addView(state, lp(-2, -2, 10)); card.addView(c.text(if (TimerState.active()) "Floating timer is on screen - drag it anywhere" else "Floats over every app, counts your study hours automatically", 11.5f, 0, T.text3), lp(-2, -2, 2))
+        card.addView(state, lp(-2, -2, 10)); card.addView(c.text(if (TimerState.active()) "Floating timer is on screen - drag it anywhere" + TimerState.topic().takeIf { it.isNotBlank() }?.let { " - $it" }.orEmpty() else "Floats over every app, counts your study hours automatically", 11.5f, 0, T.text3), lp(-2, -2, 2))
         if (!TimerState.active()) {
             val chips = c.hbox(); subjects.forEach { s -> chips.addView(c.pill(s, null, s == subj, T.subjectColor(s)) { subj = s; Store.put("timer_subject", s); h.refresh() }, lpm(-2, -2, 0, 0, 8, 0)) }
             card.addView(c.chipRow(chips), lp(-1, -2, 10))
@@ -257,7 +257,7 @@ object Cards {
             val data = Repo.byDaySubject(days); val subjects = data.flatMap { it.keys }.distinct().sortedBy { s -> -data.sumOf { it[s] ?: 0 } }
             val stacks = data.map { m -> subjects.mapNotNull { s -> m[s]?.let { T.subjectColor(s) to it / 60f } } }
             val labels = days.map { if (n == 7) it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).take(2) else if (it.dayOfMonth % 5 == 0) "${it.dayOfMonth}" else "" }
-            holder.addView(StackBars(c, labels, stacks).apply { heightDp = 160 })
+            holder.addView(StackBars(c, labels, stacks).apply { heightDp = Store.i("history_chart_height", 160).coerceIn(80, 240) })
             val tot = data.sumOf { it.values.sum() }; holder.addView(c.text("Total ${fmtMins(tot)}  -  avg ${fmtMins(tot / n)} / day", 12.5f, 2, T.text2), lp(-2, -2, 6))
             val leg = c.hbox(); subjects.take(8).forEach { s -> leg.addView(View(c).apply { background = T.round(T.subjectColor(s), 4) }, LinearLayout.LayoutParams(T.dp(8), T.dp(8))); leg.addView(c.text(" $s ${fmtMins(data.sumOf { it[s] ?: 0 })}", 11.5f, 1, T.text3), lpm(-2, -2, 2, 0, 12, 0)) }
             if (subjects.isEmpty()) holder.addView(c.emptyNote("Start the study timer or a focus session to see your hours here")) else holder.addView(c.chipRow(leg), lp(-1, -2, 8))
@@ -265,7 +265,7 @@ object Cards {
         card.addView(Segmented(c, listOf("7 days", "30 days"), range) { range = it; Store.put("hist_range", it); draw() }, lp(-2, -2, 10)); draw()
         card.addView(Collapsible(c, "Sessions", "", false, "sess") { val rows = Store.rows("sessions").sortedByDescending { it.optLong("start") }.take(25)
             if (rows.isEmpty()) addView(c.emptyNote("No sessions yet"))
-            rows.forEach { s -> val d = Repo.dayOf(s.optLong("start")); addView(c.hbox().apply { padDp(0, 7, 0, 7); addView(View(c).apply { background = T.round(T.subjectColor(s.optString("subject")), 4) }, LinearLayout.LayoutParams(T.dp(8), T.dp(8))); addView(c.text(s.optString("subject") + "  " + d.dayOfMonth + " " + d.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH), 13f, 1), lpm(0, -2, 10, 0, 0, 0, 1f)); addView(c.text(fmtMins(s.optInt("mins")), 13f, 2, T.text2)) }) } })
+            rows.forEach { s -> val d = Repo.dayOf(s.optLong("start")); val topic = s.optString("topic"); val label = s.optString("subject") + (if (topic.isNotBlank()) " - $topic" else "") + "  " + d.dayOfMonth + " " + d.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH); addView(c.hbox().apply { padDp(0, 7, 0, 7); addView(View(c).apply { background = T.round(T.subjectColor(s.optString("subject")), 4) }, LinearLayout.LayoutParams(T.dp(8), T.dp(8))); addView(c.text(label, 13f, 1, T.text2, 2), lpm(0, -2, 10, 0, 0, 0, 1f)); addView(c.text(fmtMins(s.optInt("mins")), 13f, 2, T.text2)) }) } })
         card.addView(c.pill("Add hours manually", "plus", false) { Dlg.input(c, "Minutes studied today", "e.g. 90", "", true, false, "Add") { m -> m.toIntOrNull()?.let { if (it in 1..1000) { val now = System.currentTimeMillis(); Store.add("sessions", obj("start" to now - it * 60000L, "end" to now, "mins" to it, "subject" to TimerState.subject(), "kind" to "manual")) } } } }, lp(-2, -2, 8))
         return card
     }
@@ -339,7 +339,7 @@ object Cards {
             years.forEach { (year, subjects) ->
                 val total = subjects.values.sum()
                 addView(c.hbox().apply {
-                    addView(c.text(year.toString(), 13f, 2, T.terra), LinearLayout.LayoutParams(0, -2, 1f))
+                    addView(c.text(year.toString(), 13f, 2, T.textAccent(T.terra)), LinearLayout.LayoutParams(0, -2, 1f))
                     addView(c.text("$total PYQs", 12f, 2, T.text2))
                 }, lp(-1, -2, 6))
                 subjects.entries.sortedByDescending { it.value }.forEach { (subject, count) ->
@@ -364,7 +364,7 @@ object Cards {
         }
         val next = z.mocks.firstOrNull { it.date?.isBefore(LocalDate.now(Repo.zone())) == false }
         if (next != null) card.addView(c.text("Next: ${next.title} on ${next.date}", 12.5f, 2, T.text2), lp(-2, -2, 8))
-        card.addView(Collapsible(c, "All attempts", "", false, "att_all") { att.reversed().forEach { a -> addView(c.hbox().apply { padDp(0, 7, 0, 7); addView(c.text(a.title, 12.5f, 1, T.text, 1), LinearLayout.LayoutParams(0, -2, 1f)); addView(c.text("%.1f".format(a.score), 13f, 3, T.terra)) }) } })
+        card.addView(Collapsible(c, "All attempts", "", false, "att_all") { att.reversed().forEach { a -> addView(c.hbox().apply { padDp(0, 7, 0, 7); addView(c.text(a.title, 12.5f, 1, T.text, 1), LinearLayout.LayoutParams(0, -2, 1f)); addView(c.text("%.1f".format(a.score), 13f, 3, T.textAccent(T.terra))) }) } })
         card.addView(c.pill("Add score manually", "plus", false) { Dlg.input(c, "Mock score", "e.g. 112.5", "", false, false, "Save") { s -> s.toDoubleOrNull()?.let { Store.add("scores", obj("date" to Store.today(), "score" to it, "title" to "Mock")) } } }, lp(-2, -2, 8))
         return card
     }
@@ -372,10 +372,40 @@ object Cards {
     // ---------------- zite ----------------
     private fun ziteCard(h: Host): View {
         val c = h.act; val card = Card(c); val z = Zite.data(c)
-        card.addView(c.cardHeader("refresh", "Zite sync", T.sage, c.text(if (z.live) "live" else "snapshot", 11.5f, 3, if (z.live) T.sage else T.amber)))
+        val state = Zite.syncState()
+        val stateLabel = when (state) {
+            Zite.SyncState.LIVE -> "live"
+            Zite.SyncState.SYNCING -> "syncing"
+            Zite.SyncState.STALE -> "stale"
+            Zite.SyncState.ERROR -> "sync error"
+            Zite.SyncState.CACHED -> "cached"
+            Zite.SyncState.NEVER -> "not synced"
+            Zite.SyncState.SNAPSHOT -> "snapshot"
+        }
+        val stateColor = when (state) {
+            Zite.SyncState.LIVE -> T.sage
+            Zite.SyncState.SYNCING -> T.slate
+            Zite.SyncState.STALE, Zite.SyncState.ERROR -> T.danger
+            else -> T.amber
+        }
+        card.addView(c.cardHeader("refresh", "Zite sync", T.sage, c.text(stateLabel, 11.5f, 3, T.textAccent(stateColor))))
         val last = Store.l("zite_last_ok", 0)
-        card.addView(c.text(if (!Zite.hasKey()) "Add your Zite API key in Settings > Zite for hourly live sync. Showing the built-in snapshot." else if (last > 0) "Last synced " + java.text.SimpleDateFormat("d MMM, HH:mm", Locale.ENGLISH).format(java.util.Date(last)) + ". Auto-updates every hour." else "Not synced yet", 12.5f, 0, T.text2), lp(-2, -2, 6))
-        if (Zite.lastError.isNotBlank() || Store.s("zite_last_err").isNotBlank() && last == 0L) card.addView(c.text("Error: " + Store.s("zite_last_err").take(120), 11.5f, 0, T.danger), lp(-2, -2, 4))
+        val lastAt = if (last > 0) java.text.SimpleDateFormat("d MMM, HH:mm", Locale.ENGLISH).apply {
+            timeZone = java.util.TimeZone.getTimeZone(Repo.zone())
+        }.format(java.util.Date(last)) else ""
+        val lastText = if (lastAt.isNotBlank()) " Last successful sync: $lastAt IST." else ""
+        val detail = when (state) {
+            Zite.SyncState.SNAPSHOT -> "Showing the bundled snapshot. Add an API key in Settings > Zite to sync."
+            Zite.SyncState.CACHED -> "Showing saved Zite data; no successful sync is recorded."
+            Zite.SyncState.NEVER -> "API key is set, but a successful sync has not completed."
+            Zite.SyncState.SYNCING -> "Fetching the latest available Zite data."
+            Zite.SyncState.ERROR -> "A recent sync was incomplete or failed."
+            Zite.SyncState.STALE -> "Cached data is more than one hour old."
+            Zite.SyncState.LIVE -> "Zite data is current."
+        }
+        card.addView(c.text(detail + lastText, 12.5f, 0, T.text2), lp(-2, -2, 6))
+        val error = Store.s("zite_last_err").ifBlank { Zite.lastError }
+        if (error.isNotBlank() && state == Zite.SyncState.ERROR) card.addView(c.text("Error: " + error.take(120), 11.5f, 0, T.textAccent(T.danger)), lp(-2, -2, 4))
         val r = c.hbox(); r.addView(c.pill("Sync now", "refresh", true, T.sage) { if (!Zite.hasKey()) h.openSettings("zite") else { c.toast("Syncing..."); Thread { val m = Zite.sync(c, true); c.runOnUiThread { c.toast(m); h.refresh() } }.start() } }, lpm(-2, -2, 0, 0, 8, 0))
         r.addView(c.pill("Open portal", "link", false) { try { c.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Store.s("zite_portal", Zite.PORTAL)))) } catch (e: Exception) { } })
         card.addView(r, lp(-2, -2, 10)); return card
@@ -388,7 +418,7 @@ object Cards {
         val last = Ai.history().lastOrNull { it.optString("role") == "model" }
         if (last != null) card.addView(c.text(last.optString("text").take(260), 13f, 0, T.text2, 5), lp(-2, -2, 8))
         val row = c.hbox(); val e = Dlg.field(c, if (Ai.ready()) "Ask anything about your prep" else "Add an AI key in Settings > AI"); e.setSingleLine(); e.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEND
-        row.addView(e, LinearLayout.LayoutParams(0, -2, 1f)); row.addView(c.hspace(8)); row.addView(c.iconBtn("up", T.onAccent, 44) { val s = e.text.toString().trim(); if (s.isNotEmpty()) h.openChat(s) }.also { it.background = T.round(T.plum, 14) })
+        row.addView(e, LinearLayout.LayoutParams(0, -2, 1f)); row.addView(c.hspace(8)); row.addView(c.iconBtn("up", T.contentColor(T.plum), 44) { val s = e.text.toString().trim(); if (s.isNotEmpty()) h.openChat(s) }.also { it.background = T.round(T.plum, 14) })
         e.setOnEditorActionListener { _, _, _ -> val s = e.text.toString().trim(); if (s.isNotEmpty()) h.openChat(s); true }
         card.addView(row, lp(-1, -2, 10))
         val chips = c.hbox(); chips.addView(c.pill("Open chat", "sparkle", false) { h.openChat() }, lpm(-2, -2, 0, 0, 8, 0))
@@ -431,7 +461,43 @@ object Cards {
     // ---------------- next topics (smart suggestion) ----------------
     private fun nextTopic(h: Host): View {
         val c = h.act; val card = Card(c); val z = Zite.data(c)
-        card.addView(c.cardHeader("bolt", "Next topics to study", T.gold))
+        card.addView(c.cardHeader("bolt", "Next topics to study", T.gold, c.iconBtn("pencil", T.text2, 32) {
+            val subjects = z.syl.filter { it.micros.isNotEmpty() }
+            if (subjects.isEmpty()) { c.toast("Sync the Prelims syllabus first"); return@iconBtn }
+            Dlg.choose(c, "Select a syllabus subject", subjects.map { it.name }) { si ->
+                val subject = subjects[si]
+                Dlg.choose(c, "Select a topic", subject.micros.map { it.name }) { mi ->
+                    val micro = subject.micros[mi]
+                    Store.put("next_topic_subject", subject.name)
+                    Store.put("next_topic_name", micro.name)
+                    Store.changed()
+                    h.refresh()
+                }
+            }
+        }))
+        val selectedSubject = z.syl.firstOrNull { it.name == Store.s("next_topic_subject") }
+        val selectedTopic = selectedSubject?.micros?.firstOrNull { it.name == Store.s("next_topic_name") }
+        if (selectedSubject != null && selectedTopic != null) {
+            val status = when (Syl.microState(z, selectedSubject.name, selectedTopic.name)) {
+                Syl.St.DONE -> "Completed"
+                Syl.St.LEARNING -> "In progress"
+                Syl.St.NEW -> "Not started"
+            }
+            card.addView(c.hbox().apply {
+                padDp(0, 8, 0, 8)
+                addView(View(c).apply { background = T.round(T.subjectColor(selectedSubject.name), 5) }, LinearLayout.LayoutParams(T.dp(8), T.dp(8)))
+                addView(c.text("${selectedTopic.name}\n${selectedSubject.name} - ${selectedTopic.q} PYQs - $status", 12.5f, 1, T.text2, 2), lpm(0, -2, 10, 0, 8, 0, 1f))
+                tap { Dlg.info(c, selectedTopic.name, selectedTopic.subs.sortedByDescending { it.q }.joinToString("\n") { (it.name.ifBlank { "General" }) + "  (" + it.q + ")" }.ifBlank { "No topic details available." }) }
+            }, lp(-1, -2, 6))
+            if (!TimerState.active()) card.addView(c.pill("Study selected topic", "play", true, T.gold) {
+                if (!c.canOverlay()) Dlg.confirm(c, "Allow floating timer", "Display over other apps is needed for the floating timer. The timer still runs in a notification without it.", "Open settings") {
+                    c.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${c.packageName}")))
+                }
+                TimerState.start(Syl.short(selectedSubject.name), TimerState.mode(), selectedTopic.name)
+                TimerService.start(c)
+                h.refresh()
+            }, lp(-2, -2, 4))
+        }
         // biggest PYQ weight first, among topics not done; weak accuracy bumps priority
         val cand = z.syl.flatMap { s -> s.micros.map { m -> Triple(s, m, Syl.microState(z, s.name, m.name)) } }.filter { it.third != Syl.St.DONE }
             .sortedByDescending { (s, m, st) -> val r = z.microResp[s.name + "|" + m.name]; val acc = if (r != null && r[0] + r[1] > 0) r[0].toFloat() / (r[0] + r[1]) else 0.5f; m.q * (1.4f - acc) * (if (st == Syl.St.LEARNING) 1.15f else 1f) }.take(4)

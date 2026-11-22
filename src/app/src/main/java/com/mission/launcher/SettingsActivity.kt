@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -62,7 +63,7 @@ class SettingsActivity : Activity() {
     private fun LinearLayout.note(s: String) = addView(text(s, 12f, 0, T.text3).apply { padDp(10, 0, 10, 12) })
     private fun rowBase(ic: String?, tint: Int, t: String, sub: String?, right: View?, click: (() -> Unit)?): View = hbox().apply {
         padDp(12, 13, 12, 13); minimumHeight = T.dp(52)
-        if (ic != null) addView(FrameLayout(this@SettingsActivity).apply { background = T.round(T.withAlpha(tint, 0.16f), 10); addView(icon(ic, tint, 18, 1.9f), FrameLayout.LayoutParams(T.dp(18), T.dp(18), Gravity.CENTER)) }, lpm(T.dp(34), T.dp(34), 0, 0, 12, 0))
+        if (ic != null) addView(FrameLayout(this@SettingsActivity).apply { background = T.round(T.withAlpha(tint, 0.16f), 10); addView(icon(ic, T.textAccent(tint), 18, 1.9f), FrameLayout.LayoutParams(T.dp(18), T.dp(18), Gravity.CENTER)) }, lpm(T.dp(34), T.dp(34), 0, 0, 12, 0))
         val col = vbox(); col.addView(text(t, 15f, 1, T.text)); if (!sub.isNullOrBlank()) col.addView(text(sub, 12f, 0, T.text3), lp(-2, -2, 2))
         addView(col, LinearLayout.LayoutParams(0, -2, 1f)); if (right != null) addView(right, lpm(-2, -2, 8, 0, 0, 0))
         if (click != null) tap(false) { click() }
@@ -80,11 +81,12 @@ class SettingsActivity : Activity() {
     }
     private fun num(t: String, key: String, def: Int, lo: Int, hi: Int, unit: String, sub: String? = null, after: (() -> Unit)? = null): View =
         value(t, sub, "${Store.i(key, def)} $unit") { Dlg.input(this, t, "$lo - $hi", Store.i(key, def).toString(), true) { s -> s.toIntOrNull()?.let { Store.put(key, it.coerceIn(lo, hi)); after?.invoke(); redraw() } } }
-    private fun slider(t: String, key: String, def: Int, max: Int, suffix: String = "%", after: (() -> Unit)? = null): View = vbox().apply {
-        padDp(14, 12, 14, 8); val v = text("${Store.i(key, def)}$suffix", 13.5f, 1, T.text2)
+    private fun slider(t: String, key: String, def: Int, max: Int, suffix: String = "%", min: Int = 0, after: (() -> Unit)? = null): View = vbox().apply {
+        val current = Store.i(key, def).coerceIn(min, max)
+        padDp(14, 12, 14, 8); val v = text("$current$suffix", 13.5f, 1, T.text2)
         val r = hbox(); r.addView(text(t, 15f, 1), LinearLayout.LayoutParams(0, -2, 1f)); r.addView(v); addView(r)
-        addView(SeekBar(this@SettingsActivity).apply { this.max = max; progress = Store.i(key, def); progressTintList = ColorStateList.valueOf(T.sage); thumbTintList = ColorStateList.valueOf(T.sage)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener { override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { v.text = "$p$suffix" }; override fun onStartTrackingTouch(s: SeekBar?) {}; override fun onStopTrackingTouch(s: SeekBar?) { Store.put(key, s!!.progress); after?.invoke() } }) }, lp(-1, -2, 2))
+        addView(SeekBar(this@SettingsActivity).apply { this.max = (max - min).coerceAtLeast(1); progress = current - min; progressTintList = ColorStateList.valueOf(T.sage); thumbTintList = ColorStateList.valueOf(T.sage)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener { override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { v.text = "${p + min}$suffix" }; override fun onStartTrackingTouch(s: SeekBar?) {}; override fun onStopTrackingTouch(s: SeekBar?) { Store.put(key, min + s!!.progress); after?.invoke() } }) }, lp(-1, -2, 2))
     }
     private fun secret(t: String, get: () -> String, set: (String) -> Unit, hint: String): View {
         val k = get()
@@ -107,8 +109,8 @@ class SettingsActivity : Activity() {
         val z = Zite.data(this@SettingsActivity)
         group(folder("checkc", T.sage, "Setup checklist", "${setupItems().count { it.ok }} of ${setupItems().size} ready") { setup() })
         group(folder("shield", T.danger, "Reset and data", "Password-protected cache deletion and restore") { resetData() })
-        group(folder("refresh", T.sage, "Zite and data", if (Zite.hasKey()) "Hourly sync on" else "Add API key for live sync") { zite() },
-            folder("sparkle", T.plum, "AI assistants", Ai.provider().name + " - " + Ai.model()) { ai() })
+        group(folder("refresh", T.sage, "Zite and data", Zite.syncState().name.lowercase().replace('_', ' ')) { zite() },
+            folder("sparkle", T.plum, "AI provider", Ai.provider().name + " - " + Ai.model()) { ai() })
         group(folder("drop", T.teal, "Water", "${Water.goal()} ml goal, reminders ${if (Water.enabled()) "on" else "off"}") { water() },
             folder("timer", T.amber, "Study, timer and focus", "Floating timer, pomodoro, distractions") { study() },
             folder("calendar", T.terra, "Exam", Store.s("exam_date", "2027-05-23")) { exam() })
@@ -135,9 +137,21 @@ class SettingsActivity : Activity() {
             value("Portal link", "Opened by Quick links", Store.s("zite_portal", Zite.PORTAL).removePrefix("https://").take(26) + "...") { Dlg.input(c, "Portal URL", "https://", Store.s("zite_portal", Zite.PORTAL)) { s -> Store.put("zite_portal", s.ifBlank { Zite.PORTAL }); redraw() } })
         label("Sync")
         val last = Store.l("zite_last_ok", 0)
-        group(action("refresh", T.sage, "Sync now", if (last > 0) "Last: " + java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.ENGLISH).format(java.util.Date(last)) else "Never synced") {
+        val state = when (Zite.syncState()) {
+            Zite.SyncState.LIVE -> "Live"
+            Zite.SyncState.SYNCING -> "Syncing"
+            Zite.SyncState.STALE -> "Stale"
+            Zite.SyncState.ERROR -> "Last sync failed or was partial"
+            Zite.SyncState.CACHED -> "Cached data"
+            Zite.SyncState.NEVER -> "Not synced"
+            Zite.SyncState.SNAPSHOT -> "Built-in snapshot"
+        }
+        val lastAt = if (last > 0) java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.ENGLISH).apply {
+            timeZone = java.util.TimeZone.getTimeZone(Repo.zone())
+        }.format(java.util.Date(last)) + " IST" else "No successful sync yet"
+        group(action("refresh", T.sage, "Sync now", "$state - last successful: $lastAt") {
             if (!Zite.hasKey()) toast("Add the API key first") else { toast("Syncing..."); Thread { val m = Zite.sync(c, true); runOnUiThread { toast(m); redraw() } }.start() } })
-        note("Updates automatically every hour while the phone is on (also when the launcher is closed). Syllabus, mocks, attempts and responses come from your Zite database. Only study-relevant events are shown in Upcoming.")
+        note("This is a pull sync: it fetches syllabus, mocks, attempts, responses, and PYQs from your Zite database. Automatic refresh runs hourly while the phone is on; it is not a two-way or instant push sync.")
         if (Store.s("zite_last_err").isNotBlank()) { label("Last error"); note(Store.s("zite_last_err")) }
     }
 
@@ -145,18 +159,18 @@ class SettingsActivity : Activity() {
     private fun LinearLayout.ai() {
         val c = this@SettingsActivity; val p = Ai.provider()
         label("Provider")
-        group(value("Active assistant", null, p.name) { Dlg.choose(c, "Provider", Ai.providers.map { it.name }) { i -> Store.put("ai_provider", Ai.providers[i].id); redraw() } },
+        group(value("Active provider", null, p.name) { Dlg.choose(c, "AI provider", Ai.providers.map { it.name }) { i -> Store.put("ai_provider", Ai.providers[i].id); redraw() } },
             secret(p.name + " API key", { Ai.key(p.id) }, { Ai.setKey(p.id, it) }, if (p.id == "gemini") "Free key: aistudio.google.com/apikey" else "Stored only on this device"),
             value("Model", "Pick from your key's live list", Ai.model(p).take(26)) {
                 if (!Ai.ready(p)) toast("Add the key first") else { toast("Loading models..."); Thread { try { val m = Ai.fetchModels(p); runOnUiThread { Dlg.choose(c, "Model", m) { i -> Store.put("ai_model_${p.id}", m[i]); redraw() } } } catch (e: Exception) { runOnUiThread { toast(e.message ?: "Failed") } } }.start() } },
             action(null, 0, "Type a model name manually", Ai.model(p)) { Dlg.input(c, "Model id", p.model, Ai.model(p)) { s -> Store.put("ai_model_${p.id}", s); redraw() } })
         if (p.needsBase) group(value("Base URL", "OpenAI-compatible endpoint", Ai.base(p).removePrefix("https://").take(24)) { Dlg.input(c, "Base URL", p.base, Ai.base(p)) { s -> Store.put("ai_base_${p.id}", s); redraw() } })
         label("Behaviour")
-        group(sw("Gemini can act on your data", "Add tasks, notes, water, events, start timer from chat", "ai_tools", true))
+        group(sw("Google Gemini can act on your data", "Add tasks, notes, water, events, start timer from chat", "ai_tools", true))
         label("Other assistants on this phone")
         group(action("sparkle", T.plum, "Open Xiaomi / system assistant", "Hyper AI / Google Assistant, whichever is the default") { if (!Ai.assist(c)) toast("No assistant found") },
             *Ai.installedAiApps(c).map { a -> action(null, 0, a.label, "Open app") { if (!Ai.openApp(c, a.pkg)) toast("Cannot open") } }.toTypedArray().ifEmpty { arrayOf(note0("No other AI apps detected")) })
-        note("Xiaomi's Hyper AI has no public API, so it is used through the system assistant button and the share sheet. Keys for Gemini, ChatGPT, Claude or any OpenAI-compatible service work inside the launcher.")
+        note("Xiaomi's Hyper AI has no public API, so it is used through the system assistant button and the share sheet. Keys for Google Gemini, OpenAI ChatGPT, Anthropic Claude, or any OpenAI-compatible service work inside the launcher.")
     }
     private fun note0(s: String): View = text(s, 13f, 0, T.text3).apply { padDp(14, 12, 14, 12) }
 
@@ -218,12 +232,44 @@ class SettingsActivity : Activity() {
     // ---------- Wallpaper ----------
     private fun LinearLayout.wallpaper() {
         val c = this@SettingsActivity
+        label("Live wallpaper")
+        group(
+            action("image", T.sage, "Set live wallpaper",
+                if (Wallpaper.liveActive(c)) "Active live wallpaper" else "Open Android wallpaper chooser") {
+                if (!Wallpaper.launchLiveWallpaper(c)) toast("Could not open the wallpaper chooser")
+            },
+            action("refresh", T.teal, "Apply now", "Refresh static fallback or live boundary") {
+                Thread { val ok = Wallpaper.apply(c, true); runOnUiThread { toast(if (ok) "Wallpaper updated" else "Static fallback paused or unavailable") } }.start()
+            },
+            sw("Animation", "30 fps maximum while visible", "wp_animation", true),
+            slider("FPS cap", "wp_fps", 30, 30, " fps", 1),
+            sw("Live weather", "Open-Meteo · Prayagraj · no API key", "wp_weather", true) { Weather.refreshIfNeeded(c, force = it) }
+        )
+        fun updateWeather() {
+            Wallpaper.scheduleNext(c)
+            Thread {
+                if (Weather.enabled()) Weather.refreshIfNeeded(c, force = true)
+                val applied = Wallpaper.enabled() && Wallpaper.apply(c, true, refreshWeather = false)
+                runOnUiThread {
+                    toast(if (applied) "Wallpaper applied · ${Weather.state()}" else Weather.state())
+                    redraw()
+                }
+            }.start()
+        }
         label("Automation")
-        group(sw("Auto wallpaper", "Sky, light and tint follow the time of day", "wp_sys", true),
+        group(sw("Auto wallpaper", "Sky, light and tint follow the time of day", "wp_sys", true) { Wallpaper.scheduleNext(c) },
             sw("Follow the clock", "Off = freeze at the hour below", "wp_auto", true) { redraw() },
             if (!Store.b("wp_auto", true)) num("Frozen hour", "wp_fixed_hour", 12, 0, 23, "h") else note0("Smooth change, never abrupt"),
-            num("Update every", "wp_interval", 30, 15, 240, "min", "Longer = fewer changes, saves battery"),
+            num("Update every", "wp_interval", 30, 15, 240, "min", "Android may defer background alarms", { Wallpaper.scheduleNext(c) }),
             action("image", T.slate, "Apply now", "Renders at full resolution") { toast("Rendering..."); Thread { val ok = Wallpaper.apply(c, true); runOnUiThread { toast(if (ok) "Wallpaper applied" else "Could not set wallpaper") } }.start() })
+        label("Weather-aware rendering")
+        group(sw("Weather effects", "Use modeled fog, clouds, rain and snow in procedural scenes", "wp_weather", true) { updateWeather() },
+            choice("Weather city", "wp_weather_city", "prayagraj", Weather.cities.map { it.id to it.label }, "Fixed city; no location permission") { Store.put("wp_weather_error", ""); updateWeather() },
+            value("Weather status", "Current modeled conditions", Weather.state()) {
+                Dlg.info(c, "Weather status", "${Weather.state()}\n${Weather.lastFetchedLabel()}\n\nOpen-Meteo conditions are model-based, not sensor-level real-time.")
+            },
+            action("refresh", T.teal, "Refresh weather now", Weather.lastFetchedLabel()) { updateWeather() })
+        note("Weather data by Open-Meteo. Current conditions use 15-minute model data; attribution is required under CC BY 4.0, and the free API is for non-commercial use.")
         label("Scene")
         group(choice("Scene", "wp_scene", "hills", listOf("hills" to "Misty hills", "dunes" to "Soft dunes", "forest" to "Pine forest", "ocean" to "Ocean horizon", "waves" to "Calm waves", "gradient" to "Aurora gradient", "paper" to "Warm paper", "amoled" to "Pure dark (OLED)", "photo" to "My photos")) { },
             choice("Apply to", "wp_target", "both", listOf("both" to "Home and lock", "home" to "Home only", "lock" to "Lock only")))
@@ -231,7 +277,7 @@ class SettingsActivity : Activity() {
         group(sw("Warm tint at night", "Reduces blue light in the evening", "wp_comfort", true), sw("Film grain", "Prevents colour banding on gradients", "wp_grain", true), sw("Seasonal touches", "Gentle changes through the year", "wp_season", true),
             slider("Dim", "wp_dim", 6, 40), sw("Parallax with pages", "Wallpaper drifts as you swipe", "wp_parallax", true))
         label("Smart pausing")
-        group(sw("Pause while focusing or timing", "Nothing changes during study", "wp_pause_focus", true), sw("Pause in battery saver", null, "wp_battery_pause", true),
+        group(sw("Static fallback pauses in battery saver", "Live mode keeps a static frame instead", "wp_battery_pause", true),
             sw("Countdown on lock screen", "Shows days to Prelims", "wp_lock_text", true))
         label("My photos")
         group(action("plus", T.sage, "Add photo", "${Wallpaper.photos(c).size} saved") { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_PHOTO) },
@@ -242,8 +288,9 @@ class SettingsActivity : Activity() {
     // ---------- Home screen ----------
     private fun LinearLayout.homeScreen() {
         val c = this@SettingsActivity
-        group(action("sliders", T.olive, "Edit home layout", "Move, add, remove cards and pages") { setResult(RESULT_OK); startActivity(Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("edit", true).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)); finish() })
-        note("Tip: tap the sliders icon on the home header or long-press the page dots to edit. Long-press on an app never creates a pin; pins are set under Apps and dock.")
+        group(action("sliders", T.olive, "Edit home layout", "Move and add cards; resize Android widgets") { setResult(RESULT_OK); startActivity(Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("edit", true).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)); finish() },
+            sw("Auto-hiding left edge handle", "Tap to open the app drawer; hidden after inactivity", "edge_handle", false))
+        note("New installs start with empty home pages. Tap the sliders icon on the home header or long-press the page dots to choose your cards. Pins are set under Apps and dock.")
     }
 
     // ---------- Apps ----------
@@ -259,8 +306,10 @@ class SettingsActivity : Activity() {
         val c = this@SettingsActivity
         group(choice("Theme", "theme", "auto", listOf("auto" to "Follow system", "light" to "Light (warm paper)", "dark" to "Dark (soft)", "schedule" to "Dark on a schedule")) { T.init(c.applicationContext); recreate() },
             num("Dark from", "dark_from", 19, 0, 23, "h", "Used when theme is a schedule") { T.init(c.applicationContext) }, num("Light from", "dark_to", 6, 0, 23, "h") { T.init(c.applicationContext) },
-            num("Drawer columns", "drawer_cols", 0, 0, 9, "", "0 = automatic"), num("Drawer icon size", "drawer_icon", 54, 40, 80, "dp"), sw("Drawer app names", null, "drawer_labels", true),
-            slider("Text size", "text_scale", 100, 130) { T.init(c.applicationContext); recreate() }, slider("Interface size", "ui_scale", 100, 130) { T.init(c.applicationContext); recreate() })
+            num("Drawer columns", "drawer_cols", 0, 0, 9, "", "0 = automatic"), num("Drawer icon size", "drawer_icon", 54, 24, 88, "dp"), num("Pinned app icon size", "dock_icon", 52, 24, 72, "dp"), sw("Drawer app names", null, "drawer_labels", true),
+            slider("Text size", "text_scale", 100, 130, min = 80) { T.init(c.applicationContext); recreate() },
+            slider("Interface size", "ui_scale", 100, 130, min = 80) { T.init(c.applicationContext); recreate() },
+            num("Study graph height", "history_chart_height", 160, 80, 240, "dp", "Adjust the study-history chart size"))
         note("Soft warm neutrals with sage and clay accents; no strong blues. Inter is bundled so text renders the same on every device.")
     }
 
@@ -417,6 +466,7 @@ class SettingsActivity : Activity() {
             gatedReset("Remove ${labels[index]}?") {
                 check(HomeLayout.removeWidget(id)) { "Widget is no longer on the home screen" }
                 AppWidgetHost(c, 1024).deleteAppWidgetId(id)
+                Store.put("widget_height_$id", null)
             }
         }
     }
@@ -430,7 +480,11 @@ class SettingsActivity : Activity() {
             action("bell", T.rose, "Notification access", "Mute distractions, keep important alerts") { try { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) } catch (e: Exception) { } },
             action("shield", T.plum, "Do Not Disturb access", "For focus mode") { try { startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) } catch (e: Exception) { } },
             action("bell", T.amber, "App notifications", "Water, timer, backups") { startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) },
-            action("refresh", T.sage, "Alarms and reminders", "Exact water reminders") { try { startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))) } catch (e: Exception) { } },
+            action("refresh", T.sage, "Alarms and reminders", "Exact water reminders") {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    try { startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))) } catch (_: Exception) { }
+                }
+            },
             action("bolt", T.gold, "Battery: do not optimise", "Keeps hourly sync and reminders on time (Xiaomi: also set Autostart and No restrictions)") { try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (e: Exception) { } },
             action("grid", T.slate, "Set as default home app", "Choose Mission as your launcher") { try { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) } catch (e: Exception) { } })
         note("Xiaomi HyperOS may stop background apps: open Security > Apps > Manage apps > Mission > Autostart on, Battery saver: No restrictions.")
@@ -441,7 +495,29 @@ class SettingsActivity : Activity() {
         val c = this@SettingsActivity
         group(value("Version", null, try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }) { },
             value("Data stored", "On this device (app storage)", "${Store.rows("sessions").size} sessions") { },
-            action("info", T.text2, "Show recent error log", "For troubleshooting") { Dlg.info(c, "Log", Log.dump().ifBlank { "No errors" }) })
+            action("info", T.text2, "Show recent error log", "For troubleshooting") { Dlg.info(c, "Log", Log.dump().ifBlank { "No errors" }) },
+            action("shield", T.rose, "Diagnostics", "Crash, memory, process exits") { Dlg.info(c, "Diagnostics", diagnosticsText()) })
+    }
+
+    private fun diagnosticsText(): String {
+        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+        val mi = android.app.ActivityManager.MemoryInfo()
+        am.getMemoryInfo(mi)
+        val crash = try { java.io.File(filesDir, "crash.log").takeIf { it.exists() }?.readText()?.take(12000) }
+            catch (_: Exception) { null }
+        val exits = if (android.os.Build.VERSION.SDK_INT >= 30)
+            am.getHistoricalProcessExitReasons(packageName, 0, 8).joinToString("\n") {
+                "${it.reason}:${it.status} ${it.description ?: ""}"
+            } else "Process exit reasons require Android 11+"
+        val rt = Runtime.getRuntime()
+        val trim = getSharedPreferences("mission_diagnostics", MODE_PRIVATE)
+        val trimLevel = trim.getInt("last_trim_level", -1)
+        val trimAt = trim.getLong("last_trim", 0L)
+        return "Memory: ${mi.availMem / 1048576} MB free / ${mi.totalMem / 1048576} MB total\n" +
+            "Memory class: ${am.memoryClass} MB${if (am.isLowRamDevice) " (low-RAM)" else ""}\n" +
+            "Heap: ${rt.totalMemory() / 1048576}/${rt.maxMemory() / 1048576} MB\n\n" +
+            "Last trim: level $trimLevel at $trimAt\n\n" +
+            "Process exits:\n$exits\n\nCrash log:\n${crash ?: "No crash log"}"
     }
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -493,7 +569,7 @@ class SettingsActivity : Activity() {
     private fun LinearLayout.setup() {
         val items = setupItems()
         note("Tap any row marked Fix. This screen refreshes when you come back.")
-        group(*items.map { it -> rowBase(null, 0, it.title, it.sub, text(if (it.ok) "On" else "Fix", 13.5f, 3, if (it.ok) T.sage else T.terra)) { it.fix() } }.toTypedArray())
+        group(*items.map { it -> rowBase(null, 0, it.title, it.sub, text(if (it.ok) "On" else "Fix", 13.5f, 3, T.textAccent(if (it.ok) T.sage else T.terra))) { it.fix() } }.toTypedArray())
     }
     override fun onResume() { super.onResume(); if (stack.isNotEmpty()) redraw() }
 

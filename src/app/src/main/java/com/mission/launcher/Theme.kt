@@ -54,8 +54,7 @@ object T {
     val line get() = if (dark) 0x22FFFFFF else 0x14000000
     val text get() = if (dark) 0xFFF3F0EB.toInt() else 0xFF211F1C.toInt()
     val text2 get() = if (dark) 0xFFB9B3AA.toInt() else 0xFF6A645C.toInt()
-    val text3 get() = if (dark) 0xFF8B857C.toInt() else 0xFF9C958B.toInt()
-    val onAccent = 0xFFFFFFFF.toInt()
+    val text3 get() = if (dark) 0xFFB8B1A8.toInt() else 0xFF746D64.toInt()
     val shadow get() = if (dark) 0x66000000 else 0x33463C2E
 
     // muted natural palette (eye-friendly, only one soft blue)
@@ -72,6 +71,42 @@ object T {
     val danger = 0xFFD0564F.toInt()
     val accent get() = sage
     val palette get() = intArrayOf(amber, teal, plum, sage, slate, terra, rose, clay, olive, gold)
+
+    fun contentColor(background: Int): Int {
+        val white = Color.WHITE
+        val ink = 0xFF211F1C.toInt()
+        return if (contrast(background, white) >= contrast(background, ink)) white else ink
+    }
+
+    fun textAccent(color: Int): Int {
+        val target = if (dark) Color.WHITE else Color.BLACK
+        var current = color
+        repeat(24) {
+            if (contrast(current, page) >= 4.5 && contrast(current, cardSolid) >= 4.5) return current
+            current = Color.rgb(
+                (Color.red(current) * 0.88f + Color.red(target) * 0.12f).toInt(),
+                (Color.green(current) * 0.88f + Color.green(target) * 0.12f).toInt(),
+                (Color.blue(current) * 0.88f + Color.blue(target) * 0.12f).toInt()
+            )
+        }
+        return if (dark) text else 0xFF211F1C.toInt()
+    }
+
+    private fun contrast(a: Int, b: Int): Double {
+        val hi = maxOf(luminance(a), luminance(b))
+        val lo = minOf(luminance(a), luminance(b))
+        return (hi + 0.05) / (lo + 0.05)
+    }
+
+    private fun luminance(color: Int): Double {
+        fun channel(value: Int): Double {
+            val c = value / 255.0
+            return if (c <= 0.04045) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(Color.red(color)) +
+            0.7152 * channel(Color.green(color)) +
+            0.0722 * channel(Color.blue(color))
+    }
 
     fun subjectColor(name: String): Int {
         val n = name.lowercase()

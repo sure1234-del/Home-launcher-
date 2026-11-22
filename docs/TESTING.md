@@ -2,13 +2,32 @@
 
 ## Validation status
 
-The manifest and backup-rule XML files parse successfully. An Android Kotlin compile was
-attempted but could not start because this environment has no Android SDK configured. No unit
-test suite, emulator, Redmi Pad SE, or GitHub Actions run has verified this work yet.
+## T1/T2 source validation
+- [ ] Live wallpaper: Settings > Wallpaper > Set live wallpaper opens the chooser and the selected
+      service reports as active. HyperOS fallback: static wallpaper must remain usable.
+- [ ] Wait for or set the next IST :00/:30 boundary; verify static fallback and live weather refresh.
+- [ ] Disable weather/network and confirm the wallpaper remains on cached/time-only sky and Settings
+      reports offline/stale status.
+- [ ] Open Settings > About and Diagnostics; verify crash log, memory class, trim, low-RAM and
+      historical process exit information.
+
+The manifest and backup-rule XML files parse successfully. With JDK 21 and Android SDK 35,
+`./gradlew testDebugUnitTest --no-daemon` and `./gradlew assembleDebug --no-daemon` pass locally.
+The debug APK is generated at `src/app/build/outputs/apk/debug/app-debug.apk`. No emulator,
+Redmi Pad SE, or GitHub Actions run has verified this work yet.
 
 ## Build and static checks
 
-- [ ] Run `./gradlew assembleDebug` from the Android project with JDK 17 and Android SDK 35.
+- [x] Run `./gradlew assembleDebug` from the Android project with JDK 21 and Android SDK 35.
+- [ ] Check light and dark themes on page/card surfaces: secondary text and colored text accents
+      must retain at least 4.5:1 contrast; filled pills and chat bubbles must keep readable text.
+- [ ] Verify text remains legible at 80% scale and that status is communicated with labels/icons,
+      not color alone.
+- [ ] Resize a system widget and confirm its requested dp height is stable at 80% and 100% app
+      UI scale; fixed-height providers should not show a resize control, and provider constraints
+      plus other widget options must be preserved.
+- [ ] Search the widget catalog by title/subtitle, verify no-results feedback and dismissal,
+      then select one entry and confirm only that card is added to the current page.
 - [ ] Run unit tests for Asia/Kolkata date boundaries, half-hour wallpaper rotation,
       syllabus state transitions, timer save/discard and phase transitions, and reset-password
       hashing/lockout.
@@ -61,11 +80,37 @@ test suite, emulator, Redmi Pad SE, or GitHub Actions run has verified this work
 - [ ] Change Android's device timezone and confirm dates, countdowns, schedule, and reminder
       times still follow `Asia/Kolkata`.
 - [ ] Test month/year boundary behavior and the configured exam date.
-- [ ] Verify procedural wallpaper rendering uses display dimensions (not an 8K bitmap), refreshes
-      on the configured 30-minute interval, and does not retain more than the intended small
-      bitmap cache.
+- [ ] Verify procedural wallpaper rendering uses display dimensions (not an 8K bitmap), schedules
+      a dedicated refresh at the configured interval (30 minutes by default), reschedules after
+      reboot, and does not retain more than the intended small bitmap cache. Android power
+      management may defer alarms.
+- [ ] Choose Prayagraj and another preset city; verify the status, last-fetched time, and
+      procedural wallpaper conditions match the selected city without requesting device location.
+- [ ] Test weather refresh with internet disabled, provider errors, a successful response, and
+      cached data older than 45 minutes. Confirm stale conditions are not rendered as current and
+      the settings disclose Open-Meteo attribution and modeled-data limitations.
+- [ ] Verify fog, overcast, rain, snow, and clear conditions on procedural scenes; confirm photo
+      wallpapers are not altered by weather effects.
+- [ ] Render night scenes at new, quarter, full, and three-quarter moon dates; verify phase,
+      crescent direction, and star visibility across the time-of-day transitions.
 - [ ] Verify low-memory behavior, rotation, multi-window resize, overlay teardown, and that the
       previous full-screen app remains alive.
+
+## Personalization and topic-linked study
+
+- [ ] Start adding an Android widget, recreate the launcher while the picker/bind/configuration
+      screen is open, and verify the allocation is completed or released exactly once.
+- [ ] Cancel each widget-picker stage and verify no orphan widget ID or home placement remains.
+- [ ] Disable/uninstall a widget provider after placement; verify the saved placement shows a
+      recovery message, returns when the provider is restored, and is removed only by explicit
+      user action.
+- [ ] Set drawer columns, drawer icon size, pinned-app icon size, font/UI scale (including below
+      100%), and history-chart height; close/reopen the drawer and home screen to verify each
+      saved value takes effect.
+- [ ] Choose a custom next topic from the Zite Prelims syllabus, restart the launcher, and verify
+      its subject, PYQ count, and topic details remain correct.
+- [ ] Start a study session from the chosen topic, stop and save it, and verify subject/topic
+      appear in session history and CSV export without changing older session records.
 
 ## Redmi Pad SE / HyperOS manual acceptance
 
@@ -75,5 +120,8 @@ test suite, emulator, Redmi Pad SE, or GitHub Actions run has verified this work
 - [ ] Exercise water/timer overlays with screen on/off, battery saver, and HyperOS background
       restrictions. Record required per-app autostart/battery settings.
 - [ ] Test screen-edge gestures and verify conflicts with system navigation are documented.
+- [ ] Enable the optional edge handle, wait for it to hide, then tap the narrow edge strip and
+      confirm the drawer opens; verify left/right system-back gestures still work and the handle
+      stays out of edit/drawer states. Disable the option and confirm the strip is removed.
 - [ ] Measure scrolling, rotation, and repeated wallpaper rendering for jank, memory pressure,
       or crashes; do not infer a 60fps pass without profiling.

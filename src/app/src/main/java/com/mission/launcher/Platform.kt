@@ -46,15 +46,25 @@ object Sched {
     }
     fun setAt(c: Context, at: Long, p: PendingIntent) {
         val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        @Suppress("MissingPermission")
         try { if (android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p) else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p) }
         catch (e: SecurityException) { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p) }
     }
     fun hourly(c: Context) {
-        val t = LocalDateTime.now(Repo.zone()).withMinute(0).withSecond(0).withNano(0).plusHours(1).withSecond(10)
-        setAt(c, t.atZone(Repo.zone()).toInstant().toEpochMilli(), pi(c, 11, TickReceiver::class.java, "tick"))
+        val t = TimeProvider.nextHalfHour(System.currentTimeMillis()) + 10_000L
+        setAt(c, t, pi(c, 11, TickReceiver::class.java, "tick"))
+    }
+    fun wallpaper(c: Context, at: Long) = setAt(c, at, pi(c, 12, WallpaperReceiver::class.java, "wallpaper.tick"))
+    fun cancelWallpaper(c: Context) {
+        val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        am.cancel(pi(c, 12, WallpaperReceiver::class.java, "wallpaper.tick"))
     }
     fun water(c: Context, at: Long) = setAt(c, at, pi(c, 21, WaterReceiver::class.java, WaterReceiver.TICK))
-    fun waterNag(c: Context, at: Long) = setAt(c, at, pi(c, 22, WaterReceiver::class.java, WaterReceiver.NAG))
+    fun waterNag(c: Context, at: Long) {
+        val i = Intent(c, WaterReceiver::class.java).setAction(WaterReceiver.NAG).putExtra("scheduledAt", at)
+        val p = PendingIntent.getBroadcast(c, 22, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        setAt(c, at, p)
+    }
     fun cancelWater(c: Context) { val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager; am.cancel(pi(c, 21, WaterReceiver::class.java, WaterReceiver.TICK)); am.cancel(pi(c, 22, WaterReceiver::class.java, WaterReceiver.NAG)) }
     fun focus(c: Context, at: Long) = setAt(c, at + 1000, pi(c, 31, TickReceiver::class.java, "focus"))
 }
@@ -96,7 +106,6 @@ class TickReceiver : BroadcastReceiver() {
                 if (act == "focus") { Focus.finishIfDue(c); return@Thread }
                 Focus.finishIfDue(c)
                 Zite.sync(c)
-                Wallpaper.hourly(c)
                 Backup.auto(c)
                 Briefs.tick(c)
                 Water.arm(c)
@@ -109,9 +118,33 @@ class TickReceiver : BroadcastReceiver() {
     }
 }
 
+class WallpaperReceiver : BroadcastReceiver() {
+    override fun onReceive(c: Context, i: Intent) {
+        val pending = goAsync()
+        Thread {
+            try {
+                Boot.ensure(c)
+                Wallpaper.hourly(c)
+            } catch (e: Exception) {
+                Log.e("wallpaper-alarm", e)
+            } finally {
+                try { Wallpaper.scheduleNext(c) } catch (e: Exception) { Log.e("wallpaper-schedule", e) }
+                pending.finish()
+            }
+        }.start()
+    }
+}
+
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
-        Boot.ensure(c); Sched.hourly(c); Water.arm(c)
+        if (i.action !in setOf(
+                Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+                Intent.ACTION_TIME_CHANGED,
+                Intent.ACTION_TIMEZONE_CHANGED
+            )
+        ) return
+        Boot.ensure(c); Sched.hourly(c); Water.arm(c); Wallpaper.scheduleNext(c)
         if (TimerState.active()) TimerService.start(c)
     }
 }
@@ -122,7 +155,7 @@ class WaterReceiver : BroadcastReceiver() {
         Boot.ensure(c)
         when (i.action) {
             TICK -> Water.remind(c, false)
-            NAG -> Water.remind(c, true)
+            NAG -> Water.remind(c, true, i.getLongExtra("scheduledAt", 0L))
             ADD -> Water.logFromAction(c, i.getIntExtra("ml", 250))
             CUSTOM -> {
                 val raw = android.app.RemoteInput.getResultsFromIntent(i)?.getCharSequence("ml")?.toString()?.trim().orEmpty()

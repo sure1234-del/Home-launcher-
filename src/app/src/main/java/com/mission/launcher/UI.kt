@@ -60,7 +60,7 @@ class Card(c: Context, val radius: Int = 24) : LinearLayout(c) {
 }
 
 fun Context.cardHeader(icon: String, title: String, tint: Int = T.accent, trailing: View? = null): LinearLayout = hbox().apply {
-    val chip = FrameLayout(context).apply { background = T.round(T.withAlpha(tint, 0.16f), 9); addView(IconView(context, icon, tint, 16, 1.9f), FrameLayout.LayoutParams(T.dp(16), T.dp(16), Gravity.CENTER)) }
+    val chip = FrameLayout(context).apply { background = T.round(T.withAlpha(tint, 0.16f), 9); addView(IconView(context, icon, T.textAccent(tint), 16, 1.9f), FrameLayout.LayoutParams(T.dp(16), T.dp(16), Gravity.CENTER)) }
     addView(chip, LinearLayout.LayoutParams(T.dp(30), T.dp(30)))
     addView(text(title, 15f, 2, T.text), lpm(-2, -2, 10, 0, 0, 0, 1f))
     if (trailing != null) addView(trailing)
@@ -69,14 +69,15 @@ fun Context.cardHeader(icon: String, title: String, tint: Int = T.accent, traili
 fun Context.pill(label: String, icon: String? = null, filled: Boolean = false, color: Int = T.accent, f: () -> Unit): LinearLayout = hbox().apply {
     background = T.round(if (filled) color else T.inset, 14)
     padDp(12, 8, 14, 8); gravity = Gravity.CENTER
-    if (icon != null) { addView(IconView(context, icon, if (filled) T.onAccent else T.text2, 15, 2f)); addView(hspace(6)) }
-    addView(text(label, 12.5f, 2, if (filled) T.onAccent else T.text))
+    val foreground = if (filled) T.contentColor(color) else T.text
+    if (icon != null) { addView(IconView(context, icon, if (filled) foreground else T.text2, 15, 2f)); addView(hspace(6)) }
+    addView(text(label, 12.5f, 2, foreground))
     if (icon == null) padDp(14, 8, 14, 8)
     tap(true, f)
 }
 fun Context.iconBtn(icon: String, col: Int = T.text2, size: Int = 36, f: () -> Unit): FrameLayout = FrameLayout(this).apply {
     background = T.round(T.inset, 12)
-    addView(IconView(context, icon, col, 18, 1.9f), FrameLayout.LayoutParams(T.dp(18), T.dp(18), Gravity.CENTER))
+    addView(IconView(context, icon, T.textAccent(col), 18, 1.9f), FrameLayout.LayoutParams(T.dp(18), T.dp(18), Gravity.CENTER))
     minimumWidth = T.dp(size); minimumHeight = T.dp(size); layoutParams = LinearLayout.LayoutParams(T.dp(size), T.dp(size)); tap(true, f)
 }
 fun Context.chipRow(vararg v: View): HorizontalScrollView = HorizontalScrollView(this).apply {
@@ -291,7 +292,7 @@ class Segmented(c: Context, val options: List<String>, var sel: Int, val onChang
 }
 
 fun Context.statBlock(value: String, label: String, color: Int = T.text): LinearLayout = vbox().apply {
-    addView(text(value, 22f, 3, color).tabular()); addView(text(label, 11.5f, 1, T.text3), lp(-2, -2, 2))
+    addView(text(value, 22f, 3, T.textAccent(color)).tabular()); addView(text(label, 11.5f, 1, T.text3), lp(-2, -2, 2))
 }
 
 fun Context.emptyNote(s: String): TextView = text(s, 13f, 0, T.text3).apply { padDp(0, 6, 0, 6) }

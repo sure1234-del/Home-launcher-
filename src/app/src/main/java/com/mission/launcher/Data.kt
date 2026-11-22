@@ -33,6 +33,7 @@ class ZData(
 
 // ======================= Zite =======================
 object Zite {
+    enum class SyncState { SNAPSHOT, CACHED, NEVER, SYNCING, ERROR, STALE, LIVE }
     const val BASE = "https://tables.zite.com/api/v1"
     const val DEFAULT_DB = "4ac0c0b6fa0504e9"
     const val PORTAL = "https://app.zite.com/workspace/upsc-prelims-pyq-analyzer-migration-4ac0c0b6fa0504e9"
@@ -50,6 +51,15 @@ object Zite {
     fun db() = Store.s("zite_db", DEFAULT_DB).ifBlank { DEFAULT_DB }
     fun data(c: Context): ZData { memo?.let { return it }; val d = load(c); memo = d; return d }
     fun invalidate() { memo = null }
+    fun syncState(now: Long = System.currentTimeMillis()): SyncState {
+        if (!hasKey()) return if (Store.obj("cache_zite").has("mocks")) SyncState.CACHED else SyncState.SNAPSHOT
+        if (syncing) return SyncState.SYNCING
+        val lastOk = Store.l("zite_last_ok", 0)
+        if (lastOk <= 0L) return if (Store.obj("cache_zite").has("mocks")) SyncState.CACHED else SyncState.NEVER
+        if (lastError.isNotBlank() || Store.s("zite_last_err").isNotBlank()) return SyncState.ERROR
+        if (now - lastOk > 60 * 60 * 1000L) return SyncState.STALE
+        return SyncState.LIVE
+    }
 
     // ---- snapshot + cache loading ----
     private fun asset(c: Context, n: String): String = try { c.assets.open(n).bufferedReader().use { it.readText() } } catch (e: Exception) { "[]" }
@@ -268,7 +278,7 @@ object Mains {
 // ======================= repository helpers =======================
 object Repo {
     private fun ld(s: String): LocalDate? = try { LocalDate.parse(s) } catch (e: Exception) { null }
-    fun zone(): ZoneId = ZoneId.of("Asia/Kolkata")
+    fun zone(): ZoneId = TimeProvider.zone
     fun dayOf(ms: Long): LocalDate = Instant.ofEpochMilli(ms).atZone(zone()).toLocalDate()
     fun startOf(d: LocalDate): Long = d.atStartOfDay(zone()).toInstant().toEpochMilli()
 
@@ -276,7 +286,7 @@ object Repo {
     fun examSecondsLeft(): Long = ChronoUnit.SECONDS.between(LocalDateTime.now(zone()), examDate().atTime(9, 30)).coerceAtLeast(0)
 
     // tasks
-    fun csv(): String { val sb = StringBuilder("date,start,end,minutes,subject,kind\n"); Store.rows("sessions").sortedBy { it.optLong("start") }.forEach { s -> sb.append(dayOf(s.optLong("start"))).append(',').append(java.time.Instant.ofEpochMilli(s.optLong("start")).atZone(zone()).toLocalTime().withNano(0)).append(',').append(java.time.Instant.ofEpochMilli(s.optLong("end")).atZone(zone()).toLocalTime().withNano(0)).append(',').append(s.optInt("mins")).append(',').append(s.optString("subject").replace(",", " ")).append(',').append(s.optString("kind")).append('\n') }; return sb.toString() }
+    fun csv(): String { val sb = StringBuilder("date,start,end,minutes,subject,topic,kind\n"); Store.rows("sessions").sortedBy { it.optLong("start") }.forEach { s -> sb.append(dayOf(s.optLong("start"))).append(',').append(java.time.Instant.ofEpochMilli(s.optLong("start")).atZone(zone()).toLocalTime().withNano(0)).append(',').append(java.time.Instant.ofEpochMilli(s.optLong("end")).atZone(zone()).toLocalTime().withNano(0)).append(',').append(s.optInt("mins")).append(',').append(s.optString("subject").replace(",", " ")).append(',').append(s.optString("topic").replace(",", " ")).append(',').append(s.optString("kind")).append('\n') }; return sb.toString() }
     fun carryOver(): Int { var n = 0; val today = LocalDate.now(zone()); val tmr = today.plusDays(1).toString(); tasksFor(today).filter { !it.optBoolean("done") }.forEach { t -> Store.update("tasks", t.optString("id")) { it.put("date", tmr) }; n++ }; return n }
     fun allTasks(): List<JSONObject> = Store.rows("tasks")
     fun tasksFor(d: LocalDate): List<JSONObject> = Store.rows("tasks").filter { ld(it.optString("date")) == d }

@@ -16,6 +16,10 @@
 - Procedural wallpaper is rendered for the device display dimensions. Literal 8K textures are
   intentionally not allocated; higher-than-display render resolution would increase memory use
   without improving the panel's visible detail.
+- HyperOS may block or relabel the live-wallpaper chooser. The app exposes the system
+  WallpaperManager live-wallpaper action and retains a static WallpaperManager fallback.
+- Open-Meteo provides modeled 15-minute current conditions, not an on-device sensor. Sunrise,
+  sunset and selected weather values require network verification on device.
 - Weather, Google Calendar OAuth/sync, Zite push/retry, and the requested 50+ custom widget
   gallery are not implemented. They must not be presented as live/working features yet.
 - Local restore-point files are intentionally not pruned automatically so a reset cannot discard

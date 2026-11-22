@@ -67,12 +67,24 @@ object Water {
 
     // ---- scheduling ----
     fun arm(c: Context) {
-        if (!enabled()) { Sched.cancelWater(c); return }
+        if (!enabled()) { clear(c); return }
         val now = LocalDateTime.now(Repo.zone())
         val start = startTime()
         val end = endTime()
         val local = now.toLocalTime()
-        if (pending()) { Sched.waterNag(c, System.currentTimeMillis() + nagMin() * 60000L); return }
+        if (pending()) {
+            if (!insist()) {
+                Store.put("w_pending", false); Store.put("w_level", 0); Store.put("w_nag_at", 0L)
+                Sched.cancelWater(c)
+            } else if (!notificationsAvailable(c) && !c.canOverlay()) {
+                clear(c)
+            } else {
+                val due = Store.l("w_nag_at").takeIf { it > System.currentTimeMillis() }
+                    ?: (System.currentTimeMillis() + nagMin() * 60000L)
+                scheduleNag(c, due)
+                return
+            }
+        }
         val have = Repo.waterToday()
         var next = when {
             have >= goal() || !local.isBefore(end) -> now.toLocalDate().plusDays(1).atTime(start)
@@ -84,22 +96,49 @@ object Water {
         Store.put("w_next", at); Sched.water(c, at)
     }
 
-    fun remind(c: Context, nag: Boolean) {
+    @Synchronized
+    fun remind(c: Context, nag: Boolean, expectedNagAt: Long? = null) {
         Boot.ensure(c)
-        if (!enabled()) return
+        if (!enabled()) { clear(c); return }
+        if (nag && expectedNagAt != null) {
+            if (expectedNagAt == 0L || Store.l("w_nag_at") != expectedNagAt) return
+            Store.put("w_nag_at", 0L)
+            Store.flushNow()
+        }
         val have = Repo.waterToday(); val local = LocalTime.now(Repo.zone())
         if (have >= goal() || local.isBefore(startTime()) || !local.isBefore(endTime())) { clear(c); arm(c); return }
-        val level = if (nag) Store.i("w_level", 0) + 1 else 0
-        Store.put("w_pending", true); Store.put("w_level", level)
-        post(c, level)
         val interactive = try { (c.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive } catch (e: Exception) { Log.e("water-power", e); false }
-        if (c.canOverlay() && interactive) card(c, level)
-        if (insist()) Sched.waterNag(c, System.currentTimeMillis() + nagMin() * 60000L) else { Store.put("w_pending", false); arm(c) }
+        val overlayAllowed = c.canOverlay()
+        val notificationPosted = post(c, Store.i("w_level", 0) + if (nag) 1 else 0)
+        val cardPossible = overlayAllowed && interactive
+        if (!notificationPosted && !cardPossible && !overlayAllowed) {
+            clear(c)
+            arm(c)
+            return
+        }
+
+        val level = if (notificationPosted || cardPossible) {
+            Store.i("w_level", 0) + if (nag) 1 else 0
+        } else {
+            Store.i("w_level", 0)
+        }
+        val cardGeneration = Store.i("w_card_generation", 0) + 1
+        Store.put("w_card_generation", cardGeneration)
+        Store.put("w_pending", true)
+        Store.put("w_level", level)
+        if (cardPossible) card(c, level, cardGeneration)
+        if (insist()) scheduleNag(c, System.currentTimeMillis() + nagMin() * 60000L)
+        else {
+            Store.put("w_pending", false); Store.put("w_level", 0); Store.put("w_nag_at", 0L)
+            arm(c)
+        }
     }
 
     fun clear(c: Context) {
-        Store.put("w_pending", false); Store.put("w_level", 0)
-        c.nm().cancel(NID)
+        Store.put("w_pending", false); Store.put("w_level", 0); Store.put("w_nag_at", 0L)
+        Store.put("w_card_generation", Store.i("w_card_generation", 0) + 1)
+        Sched.cancelWater(c)
+        try { c.nm().cancel(NID) } catch (e: Exception) { Log.e("water-cancel", e) }
         Overlay.remove(c, "water")
     }
     fun logFromAction(c: Context, ml: Int) {
@@ -108,12 +147,34 @@ object Water {
         if (have >= goal() && Store.s("w_goal_day") != Store.today()) {
             Store.put("w_goal_day", Store.today())
             val nm = c.nm()
-            nm.notify(NID + 1, Notification.Builder(c, CH_INFO).setSmallIcon(smallIcon(c)).setContentTitle("Water goal reached").setContentText("$have ml today. Well done.").setAutoCancel(true).build())
+            if (notificationsAvailable(c, CH_INFO)) {
+                try { nm.notify(NID + 1, Notification.Builder(c, CH_INFO).setSmallIcon(smallIcon(c)).setContentTitle("Water goal reached").setContentText("$have ml today. Well done.").setAutoCancel(true).build()) }
+                catch (e: Exception) { Log.e("water-notification", e) }
+            }
         }
     }
-    fun snooze(c: Context) { c.nm().cancel(NID); Overlay.remove(c, "water"); Sched.waterNag(c, System.currentTimeMillis() + 10 * 60000L) }
+    fun snooze(c: Context) {
+        Store.put("w_card_generation", Store.i("w_card_generation", 0) + 1)
+        Store.put("w_pending", true)
+        try { c.nm().cancel(NID) } catch (e: Exception) { Log.e("water-cancel", e) }
+        Overlay.remove(c, "water")
+        scheduleNag(c, System.currentTimeMillis() + 10 * 60000L)
+    }
     fun skip(c: Context) { clear(c); Sched.cancelWater(c); arm(c) }
-    fun onDismissed(c: Context) { if (pending() && insist()) { val lv = Store.i("w_level", 0) + 1; Store.put("w_level", lv); main.postDelayed({ if (pending()) post(c, lv) }, 1500) } }
+    fun onDismissed(c: Context) {
+        if (pending() && insist() && notificationsAvailable(c)) post(c, Store.i("w_level", 0))
+    }
+
+    private fun scheduleNag(c: Context, at: Long) {
+        Store.put("w_nag_at", at)
+        Store.flushNow()
+        Sched.waterNag(c, at)
+    }
+
+    private fun notificationsAvailable(c: Context, channel: String = CH_WATER): Boolean = try {
+        val nm = c.nm()
+        nm.areNotificationsEnabled() && (nm.getNotificationChannel(channel)?.importance ?: NotificationManager.IMPORTANCE_DEFAULT) != NotificationManager.IMPORTANCE_NONE
+    } catch (e: Exception) { false }
 
     // ---- notification ----
     private fun smallIcon(c: Context): Int { val id = c.resources.getIdentifier("ic_stat_drop", "drawable", c.packageName); return if (id != 0) id else android.R.drawable.ic_dialog_info }
@@ -130,7 +191,8 @@ object Water {
             else -> "Hydration overdue" to "You have ignored this ${level} times. Drink and tap +250. $tail"
         }
     }
-    fun post(c: Context, level: Int) {
+    fun post(c: Context, level: Int): Boolean {
+        if (!notificationsAvailable(c)) return false
         val have = Repo.waterToday(); val g = goal(); val (title, body) = lines(level, have, g, behind())
         val open = PendingIntent.getActivity(c, 7, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val ri = RemoteInput.Builder("ml").setLabel("amount in ml").build()
@@ -145,14 +207,15 @@ object Water {
             .addAction(Notification.Action.Builder(Icon.createWithResource(c, smallIcon(c)), "+$c2 ml", act(c, 12, WaterReceiver.ADD, c2)).build())
             .addAction(custom)
         val n = b.build(); n.flags = n.flags or Notification.FLAG_NO_CLEAR or Notification.FLAG_ONGOING_EVENT
-        try { c.nm().notify(NID, n) } catch (e: SecurityException) { Log.e("water-notification", e) }
+        return try { c.nm().notify(NID, n); true } catch (e: Exception) { Log.e("water-notification", e); false }
     }
 
     // ---- on-screen insistence card ----
-    private fun card(c0: Context, level: Int) {
+    private fun card(c0: Context, level: Int, generation: Int) {
         val c = c0.applicationContext
         main.post {
             try {
+                if (Store.i("w_card_generation", 0) != generation || !c.canOverlay()) return@post
                 val have = Repo.waterToday(); val (title, body) = lines(level, have, goal(), behind())
                 val box = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; background = T.round(T.cardSolid, 22, 1, T.line); padDp(16, 14, 16, 14); T.elevate(this, 8, 22) }
                 val head = c.hbox(); head.addView(c.icon("drop", T.teal, 20, 2f)); head.addView(c.text(title, 14.5f, 2), lpm(-2, -2, 8, 0, 0, 0, 1f)); box.addView(head)

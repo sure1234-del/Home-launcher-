@@ -45,7 +45,7 @@ class ChatActivity : Activity() {
         input = Dlg.field(this, "Message", multi = true).apply { minLines = 1; maxLines = 5; background = T.round(T.card, 22); padDp(16, 12, 16, 12); imeOptions = EditorInfo.IME_FLAG_NO_ENTER_ACTION }
         row.addView(iconBtn("mic", T.text2, 44) { voice() })
         row.addView(input, lpm(0, -2, 4, 0, 6, 0, 1f))
-        row.addView(iconBtn("up", T.onAccent, 44) { send() }.also { it.background = T.round(T.plum, 22) })
+        row.addView(iconBtn("up", T.contentColor(T.plum), 44) { send() }.also { it.background = T.round(T.plum, 22) })
         root.addView(row)
         setContentView(root)
         render()
@@ -56,7 +56,7 @@ class ChatActivity : Activity() {
     private fun render() {
         refreshSub(); list.removeAllViews(); val h = Ai.history()
         if (h.isEmpty()) {
-            list.addView(text(if (Ai.ready()) "Ask about your plan, a topic, an answer to review, or tell me to add a task, note, water or start the timer." else "Add an API key in Settings > AI assistants to chat here. Gemini keys are free from aistudio.google.com/apikey.", 14f, 0, T.text3).apply { padDp(10, 30, 10, 10) })
+            list.addView(text(if (Ai.ready()) "Ask about your plan, a topic, an answer to review, or tell me to add a task, note, water or start the timer." else "Add an API key in Settings > AI provider to chat here. Google Gemini keys are free from aistudio.google.com/apikey.", 14f, 0, T.text3).apply { padDp(10, 30, 10, 10) })
             if (!Ai.ready()) list.addView(pill("Open AI settings", "gear", true, T.plum) { startActivity(Intent(this@ChatActivity, SettingsActivity::class.java).putExtra("path", "ai")) }, lp(-2, -2, 10))
         }
         h.forEach { bubble(it.optString("role") == "user", it.optString("text")) }
@@ -73,7 +73,7 @@ class ChatActivity : Activity() {
         return sb
     }
     private fun bubble(user: Boolean, t: String): TextView {
-        val tv = text("", 15f, 0, if (user) T.onAccent else T.text).apply { setText(md(t)); setLineSpacing(0f, 1.15f); setTextIsSelectable(true); padDp(14, 10, 14, 10); background = T.round(if (user) T.plum else T.card, 20); maxWidth = (resources.displayMetrics.widthPixels * (if (resources.displayMetrics.widthPixels / resources.displayMetrics.density > 700) 0.5 else 0.82)).toInt() }
+        val tv = text("", 15f, 0, if (user) T.contentColor(T.plum) else T.text).apply { setText(md(t)); setLineSpacing(0f, 1.15f); setTextIsSelectable(true); padDp(14, 10, 14, 10); background = T.round(if (user) T.plum else T.card, 20); maxWidth = (resources.displayMetrics.widthPixels * (if (resources.displayMetrics.widthPixels / resources.displayMetrics.density > 700) 0.5 else 0.82)).toInt() }
         val lp = LinearLayout.LayoutParams(-2, -2); lp.topMargin = T.dp(8); lp.gravity = if (user) Gravity.END else Gravity.START; list.addView(tv, lp); return tv
     }
     private fun send() { val s = input.text.toString().trim(); if (s.isEmpty() || busy) return; input.setText(""); ask(s) }
@@ -96,9 +96,9 @@ class ChatActivity : Activity() {
         if (req == REQ_VOICE && res == RESULT_OK) d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { input.setText(it); input.setSelection(it.length) }
     }
     private fun menu() {
-        Dlg.choose(this, "Chat", listOf("Switch assistant", "Share last answer", "Open Xiaomi / system assistant", "AI settings")) { i ->
+        Dlg.choose(this, "Chat", listOf("Switch AI provider", "Share last answer", "Open Xiaomi / system assistant", "AI settings")) { i ->
             when (i) {
-                0 -> Dlg.choose(this, "Assistant", Ai.providers.map { it.name }) { k -> Store.put("ai_provider", Ai.providers[k].id); refreshSub() }
+                0 -> Dlg.choose(this, "AI provider", Ai.providers.map { it.name }) { k -> Store.put("ai_provider", Ai.providers[k].id); refreshSub() }
                 1 -> Ai.history().lastOrNull { it.optString("role") != "user" }?.let { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, it.optString("text")), "Share")) }
                 2 -> if (!Ai.assist(this)) toast("No assistant found")
                 3 -> startActivity(Intent(this, SettingsActivity::class.java).putExtra("path", "ai"))
