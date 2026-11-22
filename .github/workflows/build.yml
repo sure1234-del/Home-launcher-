@@ -55,7 +55,7 @@ jobs:
           ls -la proj
           test -f proj/app/build.gradle.kts
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
