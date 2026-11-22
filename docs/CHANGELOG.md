@@ -11,6 +11,14 @@
   cleartext-disabled network policy and package-visibility queries.
 - Added the 280 MB PSS debug assertion and live-wallpaper hidden-frame release policy.
 
+### M-S, T11 and T12 infrastructure
+- Added 56 addable Mission widget registry entries and generic detail previews.
+- Added 50 optional feature toggles to Settings; Mains answer timer is hidden when Show Mains is OFF.
+- Added 15-minute WorkManager Zite sync, immediate sync after timer save, and backup checksum
+  integrity with weekly local backup rotation.
+- Added IST solar-altitude/twilight calculations, thermal-aware wallpaper FPS and per-app locale
+  declarations for English and Hindi.
+
 ### Done
 - Added a single Asia/Kolkata `TimeProvider` for half-hour scheduling and IST date/time helpers.
 - Added `MissionWallpaperService` with a hardware-canvas engine, device-sized bitmap reuse,

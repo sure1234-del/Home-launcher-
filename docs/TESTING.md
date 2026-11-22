@@ -125,3 +125,19 @@ Redmi Pad SE, or GitHub Actions run has verified this work yet.
       stays out of edit/drawer states. Disable the option and confirm the strip is removed.
 - [ ] Measure scrolling, rotation, and repeated wallpaper rendering for jank, memory pressure,
       or crashes; do not infer a 60fps pass without profiling.
+
+## T10-T12 source and device tests
+
+- [ ] Confirm the live process stays below 280 MB PSS for 30 minutes under normal use.
+- [ ] Hide and reveal the live wallpaper and verify its bitmap is recycled after 60 seconds.
+- [ ] At moderate thermal status, verify wallpaper FPS drops and blur/disables where possible.
+- [ ] Verify all 56 registry widgets appear once, open a detail sheet, and persist after restart.
+- [ ] Add and remove every new widget; no default widget must be preloaded on fresh install.
+- [ ] Toggle all 50 feature switches and confirm Show Mains hides X03 on the Mains-only path.
+- [ ] Force Zite sync with the network on/off; verify periodic and immediate sync behavior.
+- [ ] Tamper one byte of a backup JSON and confirm restore refuses checksum mismatch.
+- [ ] Restore a legacy checksum-free backup and confirm only the explicit legacy fallback works.
+- [ ] Verify backup rotation keeps 7 newest local backups and removes older copies.
+- [ ] Change system locale to Hindi and English and verify Android per-app locale selection.
+- [ ] Verify photo wallpaper selection uses the photo picker without broad storage permission.
+- [ ] Verify Android 15 BOOT_COMPLETED does not start a timer foreground service illegally.

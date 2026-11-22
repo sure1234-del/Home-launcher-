@@ -30,3 +30,9 @@
 - No Redmi Pad SE / HyperOS 2.0.207.0 device is available in this environment. Overlay, reboot,
   gesture, frame-rate, and low-memory claims require the device checklist in
   [`TESTING.md`](./TESTING.md).
+- The 56-widget catalog is source-registered, and cards are addable. Provider-specific live charts
+  and actions remain incomplete until their data adapters and device tests pass.
+- The 50-feature Settings registry is implemented as feature toggles. Individual provider and
+  sensor implementations are not claimed as complete merely because a toggle exists.
+- Exported 8K PNG rendering is planned as tile streaming. No literal 7680x4320 bitmap is held by
+  the live engine, and live rendering stays within native display/2x limits.
