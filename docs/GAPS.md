@@ -123,3 +123,119 @@ cannot be expanded beyond the available repository evidence.
 | S06 | PARTIAL | Shape/letter cues and colour-blind palette remain. |
 | S07 | PARTIAL | Changelog exists; in-app What's New remains. |
 | S08 | PARTIAL | Permissions section exists; per-feature test wizard remains. |
+
+## T11 - 56 widget IDs
+
+| ID | Status |
+|---|---|
+| WG-STUDY-01 Study Timer | PARTIAL |
+| WG-STUDY-02 Today Slots | PARTIAL |
+| WG-STUDY-03 Subject Hours | PARTIAL |
+| WG-STUDY-04 Weekly Hours bars | PARTIAL |
+| WG-STUDY-05 Streak | PARTIAL |
+| WG-STUDY-06 Next Topics | FIXED |
+| WG-STUDY-07 Prelims Syllabus ring | PARTIAL |
+| WG-STUDY-08 PYQ per Year | PARTIAL |
+| WG-STUDY-09 PYQ Subject Heatmap | PARTIAL |
+| WG-STUDY-10 Mock Score Trend | PARTIAL |
+| WG-STUDY-11 Accuracy by Subject | PARTIAL |
+| WG-STUDY-12 Target Countdown | FIXED |
+| WG-STUDY-13 Revision Due | PARTIAL |
+| WG-STUDY-14 Mistake Notebook | PARTIAL |
+| WG-TIME-01 Clock IST | PARTIAL |
+| WG-TIME-02 Date with Hindi month | PARTIAL |
+| WG-TIME-03 Sunrise/Sunset | PARTIAL |
+| WG-TIME-04 Moon Phase | FIXED |
+| WG-TIME-05 Weather Now | PARTIAL |
+| WG-TIME-06 Hourly Forecast | PARTIAL |
+| WG-TIME-07 Air Quality | PARTIAL |
+| WG-TIME-08 Exam Countdown | FIXED |
+| WG-HEALTH-01 Water | FIXED |
+| WG-HEALTH-02 20-20-20 Break | PARTIAL |
+| WG-HEALTH-03 Sleep Wind-down | PARTIAL |
+| WG-HEALTH-04 Habit Tracker | PARTIAL |
+| WG-HEALTH-05 Focus Score | PARTIAL |
+| WG-HEALTH-06 Daily Check-in | PARTIAL |
+| WG-PROD-01 Quick Note | FIXED |
+| WG-PROD-02 To-do | FIXED |
+| WG-PROD-03 Calendar Agenda | PARTIAL |
+| WG-PROD-04 Month Calendar | PARTIAL |
+| WG-PROD-05 Pomodoro | FIXED |
+| WG-PROD-06 Stopwatch | PARTIAL |
+| WG-PROD-07 Countdown Timer | PARTIAL |
+| WG-PROD-08 Clipboard History | PARTIAL |
+| WG-PROD-09 Calculator | PARTIAL |
+| WG-PROD-10 Unit Converter | PARTIAL |
+| WG-PROD-11 Quick Launch | FIXED |
+| WG-PROD-12 Workspace Launcher | PARTIAL |
+| WG-DEVICE-01 Battery | PARTIAL |
+| WG-DEVICE-02 Storage | PARTIAL |
+| WG-DEVICE-03 RAM | PARTIAL |
+| WG-DEVICE-04 Network Speed | PARTIAL |
+| WG-DEVICE-05 Wi-Fi | PARTIAL |
+| WG-DEVICE-06 Screen Time | FIXED |
+| WG-DEVICE-07 Top 5 App Usage | PARTIAL |
+| WG-DEVICE-08 Device Temperature | PARTIAL |
+| WG-AI-01 Circle to Search | FIXED |
+| WG-AI-02 Ask AI | FIXED |
+| WG-AI-03 Spotlight | PARTIAL |
+| WG-AI-04 Current Affairs Capture | FIXED |
+| WG-MISC-01 Media Controls | PARTIAL |
+| WG-MISC-02 Quote of the Day | PARTIAL |
+| WG-MISC-03 Notification Digest | PARTIAL |
+| WG-MISC-04 Zite Sync Status | FIXED |
+
+## T12 - 50 feature toggles
+
+| ID | Status |
+|---|---|
+| X01 Subject-linked flashcards | PARTIAL |
+| X02 PYQ quiz | PARTIAL |
+| X03 Mains answer timer | PARTIAL |
+| X04 Daily current-affairs checklist | PARTIAL |
+| X05 Weekly review | PARTIAL |
+| X06 Smart daily plan | PARTIAL |
+| X07 Calendar free-slot finder | PARTIAL |
+| X08 Study slot templates | PARTIAL |
+| X09 Focus presets | PARTIAL |
+| X10 Mock-test overlay | PARTIAL |
+| X11 Distraction report | PARTIAL |
+| X12 Auto-pause grace period | PARTIAL |
+| X13 Idle detection | PARTIAL |
+| X14 Streak freeze | PARTIAL |
+| X15 Goal rings | PARTIAL |
+| X16 Notes overlay | PARTIAL |
+| X17 Per-subject notes/PDF links | PARTIAL |
+| X18 Voice notes | PARTIAL |
+| X19 Clipboard to notes | PARTIAL |
+| X20 Notification digest | PARTIAL |
+| X21 DND automation | PARTIAL |
+| X22 Automation engine | PARTIAL |
+| X23 Automation templates | PARTIAL |
+| X24 Quick Settings tiles | FIXED |
+| X25 Launcher shortcuts | FIXED |
+| X26 App usage limits | PARTIAL |
+| X27 Sleep wind-down | PARTIAL |
+| X28 IST morning/evening briefs | PARTIAL |
+| X29 Weather-based water goals | PARTIAL |
+| X30 Air-quality advisory | PARTIAL |
+| X31 Weekly PDF/image report | PARTIAL |
+| X32 Home presets | PARTIAL |
+| X33 Workspaces | PARTIAL |
+| X34 Keyboard Spotlight | PARTIAL |
+| X35 Stylus quick note | PARTIAL |
+| X36 Right-edge panel | PARTIAL |
+| X37 Hot corners | PARTIAL |
+| X38 Safe wake actions | PARTIAL |
+| X39 Folder auto-sort | PARTIAL |
+| X40 App hide/lock | PARTIAL |
+| X41 Icon pack support | PARTIAL |
+| X42 Themes | FIXED |
+| X43 Clock styles | PARTIAL |
+| X44 Streak heatmap | PARTIAL |
+| X45 IST greeting | FIXED |
+| X46 Offline PYQ cache | PARTIAL |
+| X47 Google sign-in | NEEDS-DEVICE-TEST |
+| X48 Google Calendar sync | NEEDS-DEVICE-TEST |
+| X49 Today dashboard | PARTIAL |
+| X50 Diagnostics wizard | PARTIAL |

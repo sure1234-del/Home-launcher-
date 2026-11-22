@@ -13,10 +13,12 @@ import java.time.temporal.ChronoUnit
 class MissionWallpaperService : WallpaperService() {
     companion object {
         @Volatile private var frameRelease: (() -> Unit)? = null
+
         fun releaseCachedFrame() {
             frameRelease?.invoke()
         }
     }
+
     override fun onCreateEngine(): Engine = MissionEngine()
 
     private inner class MissionEngine : Engine() {
@@ -27,17 +29,26 @@ class MissionWallpaperService : WallpaperService() {
         private var height = 0
         private var offsetX = 0f
 
-        private val drawRunnable = object : Runnable {
-            override fun run() {
-                drawFrame()
-                val fps = Store.i("wp_fps", 30).coerceIn(1, 30)
-                val delay = if (Store.b("wp_animation", true)) 1000L / fps else 60_000L
-                if (visible) handler.postDelayed(this, delay)
+        private val drawRunnable =
+            object : Runnable {
+                override fun run() {
+                    drawFrame()
+                    val power = getSystemService(POWER_SERVICE) as PowerManager
+                    val thermalModerate = power.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
+                    val fps =
+                        if (thermalModerate) {
+                            1
+                        } else {
+                            Store.i("wp_fps", 30).coerceIn(1, 30)
+                        }
+                    val delay = if (Store.b("wp_animation", true)) 1000L / fps else 60_000L
+                    if (visible) handler.postDelayed(this, delay)
+                }
             }
-        }
-        private val idleRunnable = Runnable {
-            if (!visible) recycleFrame()
-        }
+        private val idleRunnable =
+            Runnable {
+                if (!visible) recycleFrame()
+            }
 
         init {
             frameRelease = { releaseFrame() }
@@ -59,7 +70,12 @@ class MissionWallpaperService : WallpaperService() {
             }
         }
 
-        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        override fun onSurfaceChanged(
+            holder: SurfaceHolder,
+            format: Int,
+            width: Int,
+            height: Int,
+        ) {
             super.onSurfaceChanged(holder, format, width, height)
             this.width = width
             this.height = height
@@ -67,7 +83,14 @@ class MissionWallpaperService : WallpaperService() {
             drawFrame()
         }
 
-        override fun onOffsetsChanged(xOffset: Float, yOffset: Float, xOffsetStep: Float, yOffsetStep: Float, xPixelOffset: Int, yPixelOffset: Int) {
+        override fun onOffsetsChanged(
+            xOffset: Float,
+            yOffset: Float,
+            xOffsetStep: Float,
+            yOffsetStep: Float,
+            xPixelOffset: Int,
+            yPixelOffset: Int,
+        ) {
             offsetX = xOffset
             if (visible) drawFrame()
         }
@@ -100,22 +123,23 @@ class MissionWallpaperService : WallpaperService() {
                 if (frame == null || frame!!.width != renderWidth || frame!!.height != renderHeight) {
                     recycleFrame()
                     val today = TimeProvider.today()
-                    frame = Scenes.render(
-                        renderWidth,
-                        renderHeight,
-                        Wallpaper.hourNow(),
-                        Wallpaper.scene(),
-                        today.monthValue,
-                        WOpts(
-                            Store.b("wp_grain", true),
-                            Store.b("wp_comfort", true),
-                            Store.b("wp_season", true),
-                            if (batterySaver) 0.40f else Store.i("wp_dim", 6) / 100f
-                        ),
-                        today.dayOfYear,
-                        today,
-                        Weather.forRendering()
-                    )
+                    frame =
+                        Scenes.render(
+                            renderWidth,
+                            renderHeight,
+                            Wallpaper.hourNow(),
+                            Wallpaper.scene(),
+                            today.monthValue,
+                            WOpts(
+                                Store.b("wp_grain", true),
+                                Store.b("wp_comfort", true),
+                                Store.b("wp_season", true),
+                                if (batterySaver) 0.40f else Store.i("wp_dim", 6) / 100f,
+                            ),
+                            today.dayOfYear,
+                            today,
+                            Weather.forRendering(),
+                        )
                 }
             } catch (oom: OutOfMemoryError) {
                 recycleFrame()
@@ -124,18 +148,23 @@ class MissionWallpaperService : WallpaperService() {
 
             var canvas: Canvas? = null
             try {
-                canvas = if (android.os.Build.VERSION.SDK_INT >= 26) surfaceHolder.lockHardwareCanvas()
-                else surfaceHolder.lockCanvas()
+                canvas =
+                    if (android.os.Build.VERSION.SDK_INT >= 26) {
+                        surfaceHolder.lockHardwareCanvas()
+                    } else {
+                        surfaceHolder.lockCanvas()
+                    }
                 val activeFrame = frame
                 if (canvas != null && activeFrame != null) {
                     canvas.drawBitmap(activeFrame, -offsetX * renderWidth * 0.12f, 0f, null)
                     if (Store.b("wp_lock_text", true)) {
                         val days = ChronoUnit.DAYS.between(TimeProvider.today(), Repo.examDate())
-                        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                            color = android.graphics.Color.WHITE
-                            textAlign = Paint.Align.CENTER
-                            textSize = renderHeight * 0.032f
-                        }
+                        val paint =
+                            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                color = android.graphics.Color.WHITE
+                                textAlign = Paint.Align.CENTER
+                                textSize = renderHeight * 0.032f
+                            }
                         canvas.drawText("$days days to Prelims", renderWidth / 2f, renderHeight * 0.93f, paint)
                     }
                 }

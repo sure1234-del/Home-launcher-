@@ -16,13 +16,18 @@ object SecureStore {
     private const val PREFS = "secure_secrets"
     private const val ALIAS = "mission_launcher_secrets_v1"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
+
     @Volatile var lastError: String? = null
         private set
 
     fun get(name: String): String {
         return try {
-            val encoded = Store.app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(name, null)
-                ?: run { lastError = null; return "" }
+            val encoded =
+                Store.app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(name, null)
+                    ?: run {
+                        lastError = null
+                        return ""
+                    }
             val payload = Base64.decode(encoded, Base64.NO_WRAP)
             require(payload.size > 12) { "Invalid encrypted credential" }
             val iv = payload.copyOfRange(0, 12)
@@ -37,13 +42,17 @@ object SecureStore {
         }
     }
 
-    fun put(name: String, value: String) {
+    fun put(
+        name: String,
+        value: String,
+    ) {
         try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, key())
             val payload = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-            val saved = Store.app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putString(name, Base64.encodeToString(payload, Base64.NO_WRAP)).commit()
+            val saved =
+                Store.app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit().putString(name, Base64.encodeToString(payload, Base64.NO_WRAP)).commit()
             check(saved) { "Encrypted credential could not be saved" }
             lastError = null
         } catch (e: Exception) {
@@ -70,10 +79,13 @@ object SecureStore {
     fun migrateLegacy() {
         val zite = Store.s("zite_key")
         val gemini = Store.s("gemini_key")
-        val aiKeys = try { JSONObject(Store.s("ai_keys", "{}")) } catch (e: Exception) {
-            Log.e("secure-store-migrate", e)
-            JSONObject()
-        }
+        val aiKeys =
+            try {
+                JSONObject(Store.s("ai_keys", "{}"))
+            } catch (e: Exception) {
+                Log.e("secure-store-migrate", e)
+                JSONObject()
+            }
         try {
             if (zite.isNotBlank()) put("zite", zite)
             val keys = aiKeys.keys()
@@ -103,12 +115,12 @@ object SecureStore {
         generator.init(
             KeyGenParameterSpec.Builder(
                 ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setRandomizedEncryptionRequired(true)
-                .build()
+                .build(),
         )
         return generator.generateKey()
     }

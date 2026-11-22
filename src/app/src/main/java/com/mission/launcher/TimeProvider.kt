@@ -11,8 +11,11 @@ object TimeProvider {
     val zone: ZoneId = ZoneId.of("Asia/Kolkata")
 
     fun now(): LocalDateTime = Instant.now().atZone(zone).toLocalDateTime()
+
     fun today(): LocalDate = now().toLocalDate()
+
     fun time(): LocalTime = now().toLocalTime()
+
     fun millis(): Long = System.currentTimeMillis()
 
     fun nextHalfHour(nowMillis: Long = millis()): Long {
@@ -23,7 +26,10 @@ object TimeProvider {
         return next.atZone(zone).toInstant().toEpochMilli()
     }
 
-    fun halfHourSlots(start: LocalTime, end: LocalTime): List<LocalTime> {
+    fun halfHourSlots(
+        start: LocalTime,
+        end: LocalTime,
+    ): List<LocalTime> {
         val first = start.withSecond(0).withNano(0)
         val last = end.withSecond(0).withNano(0)
         val out = ArrayList<LocalTime>()

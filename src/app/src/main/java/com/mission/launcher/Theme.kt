@@ -13,8 +13,8 @@ import android.view.ViewOutlineProvider
  */
 object T {
     var dark = false
-    var ts = 1f          // text scale
-    var us = 1f          // ui scale
+    var ts = 1f // text scale
+    var us = 1f // ui scale
     private var dens = 1f
     private var tfs: Array<Typeface> = arrayOf(Typeface.DEFAULT, Typeface.DEFAULT, Typeface.DEFAULT_BOLD, Typeface.DEFAULT_BOLD)
 
@@ -24,26 +24,41 @@ object T {
         us = Store.f("ui_scale", 1f).coerceIn(0.8f, 1.3f)
         val mode = Store.s("theme", "auto")
         val sys = (c.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        dark = when (mode) { "dark" -> true; "light" -> false
-            "schedule" -> { val h = java.time.LocalTime.now(Repo.zone()).hour; val from = Store.i("dark_from", 19); val to = Store.i("dark_to", 6); if (from > to) (h >= from || h < to) else (h in from until to) }
-            else -> sys }
+        dark =
+            when (mode) {
+                "dark" -> true
+                "light" -> false
+                "schedule" -> {
+                    val h = java.time.LocalTime.now(Repo.zone()).hour
+                    val from = Store.i("dark_from", 19)
+                    val to = Store.i("dark_to", 6)
+                    if (from > to) (h >= from || h < to) else (h in from until to)
+                }
+                else -> sys
+            }
         loadFonts(c)
     }
+
     private var fontsLoaded = false
+
     private fun loadFonts(c: Context) {
         if (fontsLoaded) return
         try {
             fun w(wt: Int) = Typeface.Builder(c.assets, "Inter.ttf").setFontVariationSettings("'wght' $wt").build()
-            tfs = arrayOf(w(400), w(500), w(600), w(750)); fontsLoaded = true
+            tfs = arrayOf(w(400), w(500), w(600), w(750))
+            fontsLoaded = true
         } catch (e: Throwable) {
             tfs = arrayOf(Typeface.create("sans-serif", Typeface.NORMAL), Typeface.create("sans-serif-medium", Typeface.NORMAL), Typeface.create("sans-serif-medium", Typeface.NORMAL), Typeface.create("sans-serif", Typeface.BOLD))
         }
     }
+
     /** weight 0 regular, 1 medium, 2 semibold, 3 bold */
     fun font(weight: Int): Typeface = tfs[weight.coerceIn(0, 3)]
 
     fun dp(v: Int): Int = (v * dens * us + 0.5f).toInt()
+
     fun dpf(v: Float): Float = v * dens * us
+
     fun dpFixed(v: Int): Int = (v * dens + 0.5f).toInt()
 
     // surfaces
@@ -83,16 +98,20 @@ object T {
         var current = color
         repeat(24) {
             if (contrast(current, page) >= 4.5 && contrast(current, cardSolid) >= 4.5) return current
-            current = Color.rgb(
-                (Color.red(current) * 0.88f + Color.red(target) * 0.12f).toInt(),
-                (Color.green(current) * 0.88f + Color.green(target) * 0.12f).toInt(),
-                (Color.blue(current) * 0.88f + Color.blue(target) * 0.12f).toInt()
-            )
+            current =
+                Color.rgb(
+                    (Color.red(current) * 0.88f + Color.red(target) * 0.12f).toInt(),
+                    (Color.green(current) * 0.88f + Color.green(target) * 0.12f).toInt(),
+                    (Color.blue(current) * 0.88f + Color.blue(target) * 0.12f).toInt(),
+                )
         }
         return if (dark) text else 0xFF211F1C.toInt()
     }
 
-    private fun contrast(a: Int, b: Int): Double {
+    private fun contrast(
+        a: Int,
+        b: Int,
+    ): Double {
         val hi = maxOf(luminance(a), luminance(b))
         val lo = minOf(luminance(a), luminance(b))
         return (hi + 0.05) / (lo + 0.05)
@@ -124,16 +143,64 @@ object T {
             else -> palette[(n.hashCode() and 0x7fffffff) % 10]
         }
     }
-    fun withAlpha(c: Int, a: Float): Int = (c and 0x00FFFFFF) or ((a.coerceIn(0f, 1f) * 255).toInt() shl 24)
-    fun darken(c: Int, f: Float): Int { val hsv = FloatArray(3); Color.colorToHSV(c, hsv); hsv[2] *= f; return Color.HSVToColor(Color.alpha(c), hsv) }
-    fun lighten(c: Int, f: Float): Int { val r = Color.red(c); val g = Color.green(c); val b = Color.blue(c); return Color.argb(Color.alpha(c), (r + (255 - r) * f).toInt(), (g + (255 - g) * f).toInt(), (b + (255 - b) * f).toInt()) }
 
-    fun round(color: Int, r: Int, stroke: Int = 0, strokeColor: Int = 0): GradientDrawable = GradientDrawable().apply {
-        setColor(color); cornerRadius = dpf(r.toFloat()); if (stroke > 0) setStroke(stroke, strokeColor)
+    fun withAlpha(
+        c: Int,
+        a: Float,
+    ): Int = (c and 0x00FFFFFF) or ((a.coerceIn(0f, 1f) * 255).toInt() shl 24)
+
+    fun darken(
+        c: Int,
+        f: Float,
+    ): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(c, hsv)
+        hsv[2] *= f
+        return Color.HSVToColor(Color.alpha(c), hsv)
     }
-    fun elevate(v: View, dpElev: Int, radius: Int) {
+
+    fun lighten(
+        c: Int,
+        f: Float,
+    ): Int {
+        val r = Color.red(c)
+        val g = Color.green(c)
+        val b = Color.blue(c)
+        return Color.argb(Color.alpha(c), (r + (255 - r) * f).toInt(), (g + (255 - g) * f).toInt(), (b + (255 - b) * f).toInt())
+    }
+
+    fun round(
+        color: Int,
+        r: Int,
+        stroke: Int = 0,
+        strokeColor: Int = 0,
+    ): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dpf(r.toFloat())
+            if (stroke > 0) setStroke(stroke, strokeColor)
+        }
+
+    fun elevate(
+        v: View,
+        dpElev: Int,
+        radius: Int,
+    ) {
         v.elevation = dpf(dpElev.toFloat())
-        v.outlineProvider = object : ViewOutlineProvider() { override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, dpf(radius.toFloat())); o.alpha = 0.9f } }
-        try { v.outlineAmbientShadowColor = shadow; v.outlineSpotShadowColor = shadow } catch (e: Throwable) { }
+        v.outlineProvider =
+            object : ViewOutlineProvider() {
+                override fun getOutline(
+                    view: View,
+                    o: Outline,
+                ) {
+                    o.setRoundRect(0, 0, view.width, view.height, dpf(radius.toFloat()))
+                    o.alpha = 0.9f
+                }
+            }
+        try {
+            v.outlineAmbientShadowColor = shadow
+            v.outlineSpotShadowColor = shadow
+        } catch (e: Throwable) {
+        }
     }
 }

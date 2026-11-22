@@ -1,19 +1,19 @@
 package com.mission.launcher
 
 import android.app.Activity
-import android.text.InputType
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.text.InputType
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.view.WindowManager
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
-import javax.crypto.SecretKeyFactory
-import javax.crypto.Mac
 import javax.crypto.KeyGenerator
+import javax.crypto.Mac
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
 object ResetGate {
@@ -24,13 +24,19 @@ object ResetGate {
 
     fun isSet(): Boolean =
         (Store.s("reset_verifier").isNotBlank() && Store.s("reset_salt").isNotBlank()) ||
-        (Store.s("reset_hash").isNotBlank() && Store.s("reset_salt").isNotBlank())
+            (Store.s("reset_hash").isNotBlank() && Store.s("reset_salt").isNotBlank())
 
-    fun ensureSet(activity: Activity, onReady: () -> Unit) {
+    fun ensureSet(
+        activity: Activity,
+        onReady: () -> Unit,
+    ) {
         if (isSet()) onReady() else setPassword(activity, onReady)
     }
 
-    fun verify(activity: Activity, onAuthorized: () -> Unit) {
+    fun verify(
+        activity: Activity,
+        onAuthorized: () -> Unit,
+    ) {
         if (!isSet()) {
             setPassword(activity, onAuthorized)
             return
@@ -45,24 +51,37 @@ object ResetGate {
                 onAuthorized()
             } else {
                 val wait = lockSeconds()
-                Dlg.info(activity, "Incorrect password", if (wait > 0) "Too many attempts. Try again in $wait seconds." else "Your data was not changed.")
+                Dlg.info(
+                    activity,
+                    "Incorrect password",
+                    if (wait > 0) "Too many attempts. Try again in $wait seconds." else "Your data was not changed.",
+                )
             }
         }
     }
 
-    fun verifyAndBackup(activity: Activity, onAuthorized: () -> Unit) {
+    fun verifyAndBackup(
+        activity: Activity,
+        onAuthorized: () -> Unit,
+    ) {
         verify(activity) {
             Thread {
                 val status = Backup.runNow(activity)
                 activity.runOnUiThread {
-                    if (status.startsWith("Backup saved to ")) onAuthorized()
-                    else Dlg.info(activity, "Backup failed", "$status Data was not changed.")
+                    if (status.startsWith("Backup saved to ")) {
+                        onAuthorized()
+                    } else {
+                        Dlg.info(activity, "Backup failed", "$status Data was not changed.")
+                    }
                 }
             }.start()
         }
     }
 
-    private fun setPassword(activity: Activity, onReady: () -> Unit) {
+    private fun setPassword(
+        activity: Activity,
+        onReady: () -> Unit,
+    ) {
         enterCode(activity, "Set reset password (6-12 digits)") { first ->
             if (first.length !in 6..12 || first.any { !it.isDigit() }) {
                 Dlg.info(activity, "Invalid password", "Use 6 to 12 digits.")
@@ -80,24 +99,31 @@ object ResetGate {
         }
     }
 
-    private fun enterCode(activity: Activity, title: String, onEntered: (String) -> Unit) {
-        val input = EditText(activity).apply {
-            hint = "6-12 digits"
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            setSingleLine()
-            textSize = 18f
-        }
-        val container = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(T.dp(24), T.dp(8), T.dp(24), 0)
-            addView(input, LinearLayout.LayoutParams(-1, -2))
-        }
-        val dialog = Dlg.builder(activity)
-            .setTitle(title)
-            .setView(container)
-            .setPositiveButton("Continue") { _, _ -> onEntered(input.text.toString()) }
-            .setNegativeButton("Cancel", null)
-            .show()
+    private fun enterCode(
+        activity: Activity,
+        title: String,
+        onEntered: (String) -> Unit,
+    ) {
+        val input =
+            EditText(activity).apply {
+                hint = "6-12 digits"
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                setSingleLine()
+                textSize = 18f
+            }
+        val container =
+            LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(T.dp(24), T.dp(8), T.dp(24), 0)
+                addView(input, LinearLayout.LayoutParams(-1, -2))
+            }
+        val dialog =
+            Dlg.builder(activity)
+                .setTitle(title)
+                .setView(container)
+                .setPositiveButton("Continue") { _, _ -> onEntered(input.text.toString()) }
+                .setNegativeButton("Cancel", null)
+                .show()
         dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
@@ -122,11 +148,25 @@ object ResetGate {
 
     private fun check(password: String): Boolean {
         val verifier = Store.s("reset_verifier")
-        val salt = try { android.util.Base64.decode(Store.s("reset_salt"), android.util.Base64.NO_WRAP) }
-        catch (e: IllegalArgumentException) { Log.e("reset-password", e); return false }
+        val salt =
+            try {
+                android.util.Base64.decode(Store.s("reset_salt"), android.util.Base64.NO_WRAP)
+            } catch (
+                e: IllegalArgumentException,
+            ) {
+                Log.e("reset-password", e)
+                return false
+            }
         if (verifier.isBlank()) {
-            val legacy = try { android.util.Base64.decode(Store.s("reset_hash"), android.util.Base64.NO_WRAP) }
-            catch (e: IllegalArgumentException) { Log.e("reset-password", e); return false }
+            val legacy =
+                try {
+                    android.util.Base64.decode(Store.s("reset_hash"), android.util.Base64.NO_WRAP)
+                } catch (
+                    e: IllegalArgumentException,
+                ) {
+                    Log.e("reset-password", e)
+                    return false
+                }
             val ok = MessageDigest.isEqual(legacy, derive(password, salt))
             if (ok) {
                 save(password)
@@ -138,14 +178,22 @@ object ResetGate {
             }
             return ok
         }
-        val expected = try { android.util.Base64.decode(verifier, android.util.Base64.NO_WRAP) }
-        catch (e: IllegalArgumentException) { Log.e("reset-password", e); return false }
-        val actual = try {
-            hmac(derive(password, salt))
-        } catch (e: Exception) {
-            Log.e("reset-password", e)
-            return false
-        }
+        val expected =
+            try {
+                android.util.Base64.decode(verifier, android.util.Base64.NO_WRAP)
+            } catch (
+                e: IllegalArgumentException,
+            ) {
+                Log.e("reset-password", e)
+                return false
+            }
+        val actual =
+            try {
+                hmac(derive(password, salt))
+            } catch (e: Exception) {
+                Log.e("reset-password", e)
+                return false
+            }
         val ok = MessageDigest.isEqual(expected, actual)
         if (ok) {
             Store.put("reset_fail", 0)
@@ -157,7 +205,10 @@ object ResetGate {
         return ok
     }
 
-    private fun derive(password: String, salt: ByteArray): ByteArray {
+    private fun derive(
+        password: String,
+        salt: ByteArray,
+    ): ByteArray {
         val spec = PBEKeySpec(password.toCharArray(), salt, ITERATIONS, KEY_BITS)
         return try {
             SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
@@ -189,11 +240,10 @@ object ResetGate {
         generator.init(
             KeyGenParameterSpec.Builder(HMAC_ALIAS, KeyProperties.PURPOSE_SIGN)
                 .setDigests(KeyProperties.DIGEST_SHA256)
-                .build()
+                .build(),
         )
         return generator.generateKey()
     }
 
-    private fun lockSeconds(): Int =
-        ((Store.l("reset_lock_until") - System.currentTimeMillis() + 999) / 1000).toInt().coerceAtLeast(0)
+    private fun lockSeconds(): Int = ((Store.l("reset_lock_until") - System.currentTimeMillis() + 999) / 1000).toInt().coerceAtLeast(0)
 }

@@ -15,6 +15,7 @@ class MissionApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         installCrashLogger()
+        MissionSyncWorker.schedule(this)
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog().build())
             StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().detectAll().penaltyLog().build())
@@ -33,7 +34,8 @@ class MissionApplication : Application() {
         try {
             val prefs = getSharedPreferences("mission_diagnostics", MODE_PRIVATE)
             prefs.edit().putLong("last_trim", System.currentTimeMillis()).putInt("last_trim_level", level).apply()
-        } catch (_: Exception) { }
+        } catch (_: Exception) {
+        }
     }
 
     private fun installCrashLogger() {
@@ -43,7 +45,7 @@ class MissionApplication : Application() {
                 val trace = StringWriter().also { error.printStackTrace(PrintWriter(it)) }.toString()
                 File(filesDir, "crash.log").writeText(
                     "Thread: ${thread.name}\n$trace",
-                    StandardCharsets.UTF_8
+                    StandardCharsets.UTF_8,
                 )
                 val prefs = getSharedPreferences("mission_diagnostics", MODE_PRIVATE)
                 val now = System.currentTimeMillis()

@@ -7,9 +7,11 @@ junit = "4.13.2"
 robolectric = "4.14.1"
 leakcanary = "2.14"
 metrics = "1.0.0"
+workmanager = "2.10.5"
 
 [libraries]
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 leakcanary = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanary" }
 metrics = { module = "androidx.metrics:metrics-performance", version.ref = "metrics" }
+workmanager = { module = "androidx.work:work-runtime-ktx", version.ref = "workmanager" }

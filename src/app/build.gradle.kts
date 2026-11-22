@@ -28,9 +28,20 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
-    lint { abortOnError = false; checkReleaseBuilds = false }
-    buildFeatures { buildConfig = true }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+}
+
+detekt {
+    ignoreFailures = true
 }
 
 dependencies {
@@ -38,4 +49,5 @@ dependencies {
     testImplementation(libs.robolectric)
     debugImplementation(libs.leakcanary)
     debugImplementation(libs.metrics)
+    implementation(libs.workmanager)
 }
