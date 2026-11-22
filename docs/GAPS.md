@@ -239,3 +239,114 @@ cannot be expanded beyond the available repository evidence.
 | X48 Google Calendar sync | NEEDS-DEVICE-TEST |
 | X49 Today dashboard | PARTIAL |
 | X50 Diagnostics wizard | PARTIAL |
+
+## H - final hardening matrix
+
+| ID | Status | Notes |
+|---|---|---|
+| H001 | NEEDS-DEVICE-TEST | Cold start first frame |
+| H002 | NEEDS-DEVICE-TEST | 90 Hz home scroll |
+| H003 | NEEDS-DEVICE-TEST | 8-widget process memory |
+| H004 | NEEDS-DEVICE-TEST | UI-hidden bitmap trim |
+| H005 | NEEDS-DEVICE-TEST | 60-second wallpaper recycle |
+| H006 | NEEDS-DEVICE-TEST | Icon cache pressure |
+| H007 | NEEDS-DEVICE-TEST | Widget preview cache pressure |
+| H008 | NEEDS-DEVICE-TEST | Thermal wallpaper FPS |
+| H009 | NEEDS-DEVICE-TEST | Thermal blur disable |
+| H010 | NEEDS-DEVICE-TEST | Battery-saver polling |
+| H011 | NEEDS-DEVICE-TEST | Doze sync |
+| H012 | NEEDS-DEVICE-TEST | Process-death sheet state |
+| H013 | NEEDS-DEVICE-TEST | Process-death timer state |
+| H014 | NEEDS-DEVICE-TEST | Process-death overlay queue |
+| H015 | NEEDS-DEVICE-TEST | onDraw allocation audit |
+| H016 | NEEDS-DEVICE-TEST | onBindView allocation audit |
+| H017 | NEEDS-DEVICE-TEST | Edge-to-edge top inset |
+| H018 | NEEDS-DEVICE-TEST | Edge-to-edge bottom inset |
+| H019 | NEEDS-DEVICE-TEST | Edge-to-edge left inset |
+| H020 | NEEDS-DEVICE-TEST | Edge-to-edge right inset |
+| H021 | NEEDS-DEVICE-TEST | Notification rationale |
+| H022 | NEEDS-DEVICE-TEST | Notification denial |
+| H023 | NEEDS-DEVICE-TEST | Timer foreground start |
+| H024 | NEEDS-DEVICE-TEST | Timer foreground timeout |
+| H025 | NEEDS-DEVICE-TEST | Boot foreground restriction |
+| H026 | NEEDS-DEVICE-TEST | Exact alarm permission |
+| H027 | NEEDS-DEVICE-TEST | Full-screen intent policy |
+| H028 | NEEDS-DEVICE-TEST | Obscured-touch overlay |
+| H029 | NEEDS-DEVICE-TEST | Overlay pass-through |
+| H030 | NEEDS-DEVICE-TEST | Overlay IME position |
+| H031 | NEEDS-DEVICE-TEST | Package visibility launcher apps |
+| H032 | NEEDS-DEVICE-TEST | Calendar package visibility |
+| H033 | NEEDS-DEVICE-TEST | Lens package visibility |
+| H034 | NEEDS-DEVICE-TEST | Gemini package visibility |
+| H035 | NEEDS-DEVICE-TEST | YouTube package visibility |
+| H036 | FIXED | Native library inventory |
+| H037 | NEEDS-DEVICE-TEST | Predictive back drawer |
+| H038 | NEEDS-DEVICE-TEST | Predictive back sheet |
+| H039 | NEEDS-DEVICE-TEST | Hindi locale |
+| H040 | NEEDS-DEVICE-TEST | English locale |
+| H041 | NEEDS-DEVICE-TEST | HyperOS Autostart deep link |
+| H042 | NEEDS-DEVICE-TEST | HyperOS pop-up permission |
+| H043 | NEEDS-DEVICE-TEST | HyperOS battery unrestricted |
+| H044 | NEEDS-DEVICE-TEST | Lock-in-recents hint |
+| H045 | NEEDS-DEVICE-TEST | Status confirmation fallback |
+| H046 | NEEDS-DEVICE-TEST | Photo picker wallpaper |
+| H047 | NEEDS-DEVICE-TEST | IST timezone transition |
+| H048 | FIXED | Reset dialog secure flag |
+| H049 | FIXED | Backup screen secure flag |
+| H050 | FIXED | Cleartext disabled |
+| H051 | NEEDS-DEVICE-TEST | Keystore HMAC after reboot |
+| H052 | NEEDS-DEVICE-TEST | Keystore AES-GCM after reboot |
+| H053 | NEEDS-DEVICE-TEST | No secrets in crash log |
+| H054 | NEEDS-DEVICE-TEST | Accessibility disclosure |
+| H055 | NEEDS-DEVICE-TEST | Shorts guard |
+| H056 | NEEDS-DEVICE-TEST | Capture cache cleanup |
+| H057 | FIXED | Backup envelope SHA-256 |
+| H058 | NEEDS-DEVICE-TEST | Backup tamper restore refusal |
+| H059 | FIXED | Exported manifest entries |
+| H060 | FIXED | Immutable PendingIntent flags |
+| H061 | FIXED | Debug tools build guard |
+| H062 | NEEDS-DEVICE-TEST | Solar-altitude sky |
+| H063 | NEEDS-DEVICE-TEST | Civil twilight |
+| H064 | NEEDS-DEVICE-TEST | Nautical twilight |
+| H065 | NEEDS-DEVICE-TEST | Astronomical twilight |
+| H066 | NEEDS-DEVICE-TEST | Moon rise Prayagraj |
+| H067 | NEEDS-DEVICE-TEST | Moon set Prayagraj |
+| H068 | NEEDS-DEVICE-TEST | Moon below horizon |
+| H069 | NEEDS-DEVICE-TEST | Sun glare throttle |
+| H070 | NEEDS-DEVICE-TEST | Milky-way noise |
+| H071 | NEEDS-DEVICE-TEST | Haze under 4 km |
+| H072 | NEEDS-DEVICE-TEST | Smoke/dust tint |
+| H073 | NEEDS-DEVICE-TEST | Rain-ground reflection |
+| H074 | NEEDS-DEVICE-TEST | 30-minute fade |
+| H075 | NEEDS-DEVICE-TEST | Wallpaper Lab scrubber |
+| H076 | NEEDS-DEVICE-TEST | Wallpaper season day picker |
+| H077 | NEEDS-DEVICE-TEST | Lock countdown variant |
+| H078 | FIXED | Wallpaper scene presets |
+| H079 | NEEDS-DEVICE-TEST | Photo wallpaper picker |
+| H080 | FIXED | Resizeable activity |
+| H081 | NEEDS-DEVICE-TEST | Full split floating launch modes |
+| H082 | NEEDS-DEVICE-TEST | Last-8-app dock |
+| H083 | NEEDS-DEVICE-TEST | PiP focus handoff |
+| H084 | NEEDS-DEVICE-TEST | Overlay gesture zone |
+| H085 | NEEDS-DEVICE-TEST | IME overlay |
+| H086 | NEEDS-DEVICE-TEST | 20 rapid app launches |
+| H087 | NEEDS-DEVICE-TEST | 10 rapid window resizes |
+| H088 | NEEDS-DEVICE-TEST | HyperOS close evidence |
+| H089 | FIXED | Atomic JSON storage choice |
+| H090 | NEEDS-DEVICE-TEST | Record id migration |
+| H091 | NEEDS-DEVICE-TEST | updatedAt migration |
+| H092 | NEEDS-DEVICE-TEST | deviceId migration |
+| H093 | NEEDS-DEVICE-TEST | synced flag migration |
+| H094 | NEEDS-DEVICE-TEST | Latest-updated conflict |
+| H095 | NEEDS-DEVICE-TEST | 30-day tombstones |
+| H096 | FIXED | Zite status model |
+| H097 | NEEDS-DEVICE-TEST | Pending sync queue |
+| H098 | FIXED | WorkManager 15-minute constraint |
+| H099 | NEEDS-DEVICE-TEST | Immediate sync after tick |
+| H100 | FIXED | Local backup 7-copy rotation |
+| H101 | NEEDS-DEVICE-TEST | Session JSON export |
+| H102 | NEEDS-DEVICE-TEST | First-run wizard |
+| H103 | NEEDS-DEVICE-TEST | Settings two-pane landscape |
+| H104 | NEEDS-DEVICE-TEST | Compact density |
+| H105 | NEEDS-DEVICE-TEST | Colour-blind palette |
+| H106 | NEEDS-DEVICE-TEST | Diagnostics share report |

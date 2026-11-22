@@ -8,6 +8,7 @@
 | M-S platform and data gaps | M01-S08 | PARTIAL/FIXED/NEEDS-DEVICE-TEST | 6ca8019 |
 | T11 widget library | 56 widget IDs | PARTIAL (56 catalog entries) | 6ca8019 |
 | T12 feature registry | X01-X50 | PARTIAL (Settings toggles and stubs) | 6ca8019 |
+| T9 final verification | Build/test/lint status | FIXED compile baseline / NEEDS-DEVICE-TEST runtime | f55e036 |
 
 ## Mandatory source documents
 
