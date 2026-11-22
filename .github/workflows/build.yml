@@ -81,7 +81,7 @@ jobs:
           ls -la proj/app/build/outputs/apk/debug/
           test -f proj/app/build/outputs/apk/debug/app-debug.apk
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: Mission-Launcher-APK
           path: proj/app/build/outputs/apk/debug/app-debug.apk
