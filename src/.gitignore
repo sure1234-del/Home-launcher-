@@ -6,5 +6,6 @@ local.properties
 /app/debug.keystore
 *.jks
 *.keystore
+/.kotlin/
 captures/
 .DS_Store
